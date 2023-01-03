@@ -34,13 +34,56 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
+/**
+ * Nostr 
+ * 
+ * ["EVENT", <subscription_id>, <event JSON>]
+ * ["NOTICE", <message>]
+ */
+use uuid::Uuid;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub type Tag = [String; 2];
+
+pub enum EventKinds {
+  Metadata = 0,
+  Text = 1,
+  RecommendRelay = 2,
+  Contacts = 3,
+  EncryptedDirectMessages = 4,
+  EventDeletion = 5,
+  Repost = 6,
+  Reaction = 7,
+  ChannelCreation = 40,
+  ChannelMetadata = 41,
+  ChannelMessage = 42,
+  ChannelHideMessage = 43,
+  ChannelMuteUser = 44,
+}
+
+pub struct Event {
+  id: String, // 32-bytes SHA256 of the serialized event data
+  pubkey: String, // 32-bytes hex-encoded public key of the event creator
+  created_at: u64, // unix timestamp in seconds
+  kind: u32, // kind of event
+  tags: Vec<Tag>,
+  content: String, // arbitrary string
+  sig: String, // 
+}
+
 async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
+  let start = SystemTime::now();
+  let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+  println!("Time now in seconds: {}", since_epoch.as_secs());
+
   println!("Incoming TCP connection from: {}", addr);
 
   let ws_stream = tokio_tungstenite::accept_async(raw_stream)
     .await
     .expect("Error during the websocket handshake occurred");
   println!("WebSocket connection established: {}", addr);
+
+  let subscription_id = Uuid::new_v4();
 
   // Insert the write part of this peer to the peer map.
   let (tx, rx) = unbounded();
