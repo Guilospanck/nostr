@@ -19,7 +19,6 @@
 
 use std::{
   collections::HashMap,
-  env,
   io::Error as IoError,
   net::SocketAddr,
   sync::{Arc, Mutex},
@@ -29,19 +28,19 @@ use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::{frame::coding::Data, Message};
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
+use std::time::{SystemTime, UNIX_EPOCH};
 /**
- * Nostr 
- * 
+ * Nostr
+ *
  * ["EVENT", <subscription_id>, <event JSON>]
  * ["NOTICE", <message>]
  */
 use uuid::Uuid;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub enum EventTags {
   PubKey,
@@ -57,9 +56,43 @@ impl EventTags {
   }
 }
 
-// ["p", <32-bytes hex of the key>], <recommended relay URL>]  ["e", <32-bytes hex of the id of another event>, <recommended relay URL>]  ...
-// the <recommended relay URL> is optional and can be set to ""
+/** A tag is made of 3 parts:
+   - an EventTag (p, e ...)
+   - a string informing the content for that EventTag (pubkey for the "p" tag and event id for the "e" tag)
+   - an optional string of a recommended relay URL (can be set to "")
+
+   ```["p", <32-bytes hex of the key>], <recommended relay URL>]```
+   ```["e", <32-bytes hex of the id of another event>, <recommended relay URL>]```
+
+   Example:
+   ```json
+   ["e", "688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6", "wss://relay.damus.io"]
+   ["p", "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76", ""]
+   ```
+*/
 pub type Tag = [String; 3];
+pub struct Tags(Vec<Tag>);
+
+impl std::fmt::Display for Tags {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "[")?;
+    for (idx, tag) in self.0.iter().enumerate() {
+      write!(f, "[")?;
+      for (pos, v) in tag.iter().enumerate() {
+        write!(f, "\"{}\"", v)?;
+        if pos < tag.len() - 1 {
+          write!(f, ",")?;
+        }
+      }
+      write!(f, "]")?;
+      if idx < self.0.len() - 1 {
+        write!(f, ",")?;
+      }
+    }
+    write!(f, "]")?;
+    Ok(())
+  }
+}
 
 pub enum EventKinds {
   Metadata = 0,
@@ -78,35 +111,56 @@ pub enum EventKinds {
 }
 
 /**
- * Example (id's and other hashes are not valid for the information presented):
-    ```json
-    {
-      "id": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
-      "pubkey": "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",
-      "created_at": 1673002822,
-      "kind": 1,
-      "tags": [
-        ["e", "688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6", "wss://relay.damus.io"],
-        ["p", "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76", ""],
-      ],
-      "content": "Lorem ipsum dolor sit amet",
-      "sig": "e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"
-    }
-    ```
- */
+ Event is the only object that exists in the Nostr protocol.
+
+ Example (id's and other hashes are not valid for the information presented):
+   ```json
+   {
+     "id": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+     "pubkey": "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",
+     "created_at": 1673002822,
+     "kind": 1,
+     "tags": [
+       ["e", "688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6", "wss://relay.damus.io"],
+       ["p", "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76", ""],
+     ],
+     "content": "Lorem ipsum dolor sit amet",
+     "sig": "e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"
+   }
+   ```
+*/
 pub struct Event {
-  id: String, // 32-bytes SHA256 of the serialized event data
-  pubkey: String, // 32-bytes hex-encoded public key of the event creator
+  id: String,      // 32-bytes SHA256 of the serialized event data
+  pubkey: String,  // 32-bytes hex-encoded public key of the event creator
   created_at: u64, // unix timestamp in seconds
-  kind: u32, // kind of event
-  tags: Vec<Tag>,
+  kind: u32,       // kind of event
+  tags: Tags,
   content: String, // arbitrary string
-  sig: String, // 64-bytes signature of the id field
+  sig: String,     // 64-bytes signature of the id field
+}
+
+#[derive(Debug)]
+enum DataToSerialize {
+  String(String),
+  U64(u64),
+  U32(u32),
+  Vec(Vec<[String; 3]>),
+}
+
+fn serialize_event(event: Event) -> String {
+  let data = format!(
+    "[{},\"{}\",{},{},{},\"{}\"]",
+    0, event.pubkey, event.created_at, event.kind, event.tags, event.content
+  );
+  println!("{}", data);
+  data
 }
 
 async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
   let start = SystemTime::now();
-  let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+  let since_epoch = start
+    .duration_since(UNIX_EPOCH)
+    .expect("Time went backwards");
   println!("Time now in seconds: {}", since_epoch.as_secs());
 
   println!("Incoming TCP connection from: {}", addr);
@@ -156,21 +210,36 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
 
 #[tokio::main]
 async fn main() -> Result<(), IoError> {
-  let addr = env::args()
-    .nth(1)
-    .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+  let ev = Event {
+    id: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned(),
+    pubkey: "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76".to_owned(),
+    created_at: 1673002822,
+    kind: 1,
+    tags: Tags([
+      ["e".to_owned(), "688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6".to_owned(), "wss://relay.damus.io".to_owned()],
+      ["p".to_owned(), "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76".to_owned(), "".to_owned()],
+    ].to_vec()),
+    content: "Lorem ipsum dolor sit amet".to_owned(),
+    sig: "e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c".to_owned()
+  };
 
-  let state = PeerMap::new(Mutex::new(HashMap::new()));
+  serialize_event(ev);
 
-  // Create the event loop and TCP listener we'll accept connections on.
-  let try_socket = TcpListener::bind(&addr).await;
-  let listener = try_socket.expect("Failed to bind");
-  println!("Listening on: {}", addr);
+  // let addr = env::args()
+  //   .nth(1)
+  //   .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
-  // Let's spawn the handling of each connection in a separate task.
-  while let Ok((stream, addr)) = listener.accept().await {
-    tokio::spawn(handle_connection(state.clone(), stream, addr));
-  }
+  // let state = PeerMap::new(Mutex::new(HashMap::new()));
+
+  // // Create the event loop and TCP listener we'll accept connections on.
+  // let try_socket = TcpListener::bind(&addr).await;
+  // let listener = try_socket.expect("Failed to bind");
+  // println!("Listening on: {}", addr);
+
+  // // Let's spawn the handling of each connection in a separate task.
+  // while let Ok((stream, addr)) = listener.accept().await {
+  //   tokio::spawn(handle_connection(state.clone(), stream, addr));
+  // }
 
   Ok(())
 }
