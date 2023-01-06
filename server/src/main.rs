@@ -43,7 +43,7 @@ type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 use uuid::Uuid;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub type Tag = [String; 2];
+pub type Tag = [String; 3]; // ["p", <32-bytes hex of the key>], <recommended relay URL>]  ["e", <32-bytes hex of the id of another event>, <recommended relay URL>]  ...
 
 pub enum EventKinds {
   Metadata = 0,
@@ -68,7 +68,7 @@ pub struct Event {
   kind: u32, // kind of event
   tags: Vec<Tag>,
   content: String, // arbitrary string
-  sig: String, // 
+  sig: String, // 64-bytes signature of the id field
 }
 
 async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {

@@ -1,5 +1,8 @@
-use bitcoin_hashes::{sha256, Hash, hex::ToHex};
-use secp256k1::{ecdsa, Error, Message, PublicKey, Secp256k1, SecretKey, Signing, Verification, schnorr::{self, Signature}, KeyPair, XOnlyPublicKey};
+use bitcoin_hashes::{hex::ToHex, sha256, Hash};
+use secp256k1::{
+  ecdsa, schnorr, Error, KeyPair, Message, PublicKey, Secp256k1, SecretKey, Signing, Verification,
+  XOnlyPublicKey,
+};
 
 fn verify_edcsa<C: Verification>(
   secp: &Secp256k1<C>,
@@ -46,12 +49,24 @@ fn sign_schnorr<C: Signing>(
 ) -> Result<schnorr::Signature, Error> {
   let msg = sha256::Hash::hash(msg);
   let msg = Message::from_slice(&msg)?;
-  let seckey = SecretKey::from_slice(&seckey)?;  
+  let seckey = SecretKey::from_slice(&seckey)?;
   let keypair = KeyPair::from_secret_key(secp, &seckey);
   Ok(secp.sign_schnorr_no_aux_rand(&msg, &keypair))
 }
 
+fn generate_keys() {
+  let secp = Secp256k1::new();
+  let mut rng = rand::thread_rng();
+
+  let (seckey, pubkey) = secp.generate_keypair(&mut rng);
+
+  println!("Secret Key: {:?}\nPublic Key: {}", seckey, pubkey);
+
+  assert_eq!(pubkey, PublicKey::from_secret_key(&secp, &seckey));
+}
+
 fn main() {
+  generate_keys();
   let secp = Secp256k1::new();
 
   let seckey = [
@@ -65,15 +80,15 @@ fn main() {
   let msg = b"This is some message";
 
   // ECDSA
-  let signature_ecdsa = sign_ecdsa(&secp, msg, seckey).unwrap();  
+  let signature_ecdsa = sign_ecdsa(&secp, msg, seckey).unwrap();
   let serialize_sig_ecdsa = signature_ecdsa.serialize_compact();
   println!("ECDSA => {:?}\n", serialize_sig_ecdsa.to_hex()); // 64 bytes
   assert!(verify_edcsa(&secp, msg, serialize_sig_ecdsa, pubkey).unwrap());
 
   // Schnorr
-  let signature_schnorr = sign_schnorr(&secp, msg, seckey).unwrap(); 
+  let signature_schnorr = sign_schnorr(&secp, msg, seckey).unwrap();
   println!("Schnorr => {:?}", signature_schnorr.to_hex()); // 64 bytes
-  let seckey = SecretKey::from_slice(&seckey).unwrap();  
+  let seckey = SecretKey::from_slice(&seckey).unwrap();
   let keypair = KeyPair::from_secret_key(&secp, &seckey);
   assert!(verify_schnorr(&secp, msg, signature_schnorr, keypair).unwrap());
 }
