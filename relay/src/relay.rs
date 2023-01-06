@@ -19,6 +19,7 @@
 
 use std::{
   collections::HashMap,
+  env,
   io::Error as IoError,
   net::SocketAddr,
   sync::{Arc, Mutex},
@@ -209,7 +210,7 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
 }
 
 #[tokio::main]
-async fn main() -> Result<(), IoError> {
+pub async fn main() -> Result<(), IoError> {
   let ev = Event {
     id: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned(),
     pubkey: "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76".to_owned(),
