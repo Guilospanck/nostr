@@ -35,7 +35,7 @@ type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
 async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
-  println!("Incoming TCP connection from: {}", addr);
+  // println!("Incoming TCP connection from: {}\n{:?}\n{:?}", addr, peer_map, raw_stream);
 
   let ws_stream = tokio_tungstenite::accept_async(raw_stream)
       .await

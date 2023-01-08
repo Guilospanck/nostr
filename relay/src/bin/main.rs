@@ -1,4 +1,4 @@
 use relay::relay;
 fn main() {
-  relay::main().expect("Error while trying to instatiante relay WS");
+  relay::initiate_relay().expect("Error while trying to instatiante relay WS");
 }
