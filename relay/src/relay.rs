@@ -1,22 +1,3 @@
-//! A chat server that broadcasts a message to all connections.
-//!
-//! This is a simple line-based server which accepts WebSocket connections,
-//! reads lines from those connections, and broadcasts the lines to all other
-//! connected clients.
-//!
-//! You can test this out by running:
-//!
-//!     cargo run --example server 127.0.0.1:12345
-//!
-//! And then in another window run:
-//!
-//!     cargo run --example client ws://127.0.0.1:12345/
-//!
-//! You can run the second command in multiple windows and then chat between the
-//! two, seeing the messages from the other client as they're received. For all
-//! connected clients they'll all join the same room and see everyone else's
-//! messages.
-
 use std::{
   collections::HashMap,
   env,
@@ -31,6 +12,8 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::{frame::coding::Data, Message};
 
+use serde::{Serialize};
+
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
@@ -38,10 +21,46 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /**
  * Nostr
  *
- * ["EVENT", <subscription_id>, <event JSON>]
- * ["NOTICE", <message>]
+ * Client-to-Relay:
+    * ["EVENT", <event JSON>] -> used to publish events
+    * ["REQ", <subscription_id>, <filters JSON] -> used to request events and subscribe to new updates
+    * ["CLOSE", <subscription_id>] -> used to stop previous subscriptions
+
+    <subscription_id>: random string used to represent a subscription.
+
  */
 use uuid::Uuid;
+
+/**
+  Filters are data structures that clients send to relays (being the first on the first connection)
+  to request data from other clients.
+  The attributes of a Filter work as && (in other words, all the conditions set must be present
+  in the event in order to pass the filter)
+
+  - ids: a list of events of prefixes
+  - authors: a list of publickeys or prefixes, the pubkey of an event must be one of these
+  - kinds: a list of kind numbers
+  - tags: list of tags
+    [
+      e: a list of event ids that are referenced in an "e" tag,
+      p: a list of pubkeys that are referenced in an "p" tag,
+      ...
+    ]
+  - since: a timestamp. Events must be newer than this to pass
+  - until: a timestamp. Events must be older than this to pass
+  - limit: maximum number of events to be returned in the initial query  
+ */
+
+ #[derive(Debug, Serialize)]
+pub struct Filter {
+  ids: Option<Vec<String>>,
+  authors: Option<Vec<String>>,
+  kinds: Option<Vec<u64>>,
+  tags: Option<HashMap<String, Vec<String>>>,
+  since: Option<String>,
+  until: Option<String>,
+  limit: Option<u64>
+}
 
 pub enum EventTags {
   PubKey,
@@ -134,18 +153,10 @@ pub struct Event {
   id: String,      // 32-bytes SHA256 of the serialized event data
   pubkey: String,  // 32-bytes hex-encoded public key of the event creator
   created_at: u64, // unix timestamp in seconds
-  kind: u32,       // kind of event
+  kind: u64,       // kind of event
   tags: Tags,
   content: String, // arbitrary string
   sig: String,     // 64-bytes signature of the id field
-}
-
-#[derive(Debug)]
-enum DataToSerialize {
-  String(String),
-  U64(u64),
-  U32(u32),
-  Vec(Vec<[String; 3]>),
 }
 
 fn serialize_event(event: Event) -> String {
@@ -223,6 +234,19 @@ pub async fn initiate_relay() -> Result<(), IoError> {
     content: "Lorem ipsum dolor sit amet".to_owned(),
     sig: "e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c".to_owned()
   };
+
+  let filter = Filter {
+    ids: Some(["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec()),
+    authors: None,
+    kinds: None,
+    tags: None,
+    since: None,
+    until: None,
+    limit: None,
+  };
+
+  let filter_serialized = serde_json::to_string(&filter).unwrap();
+  println!("{}\n", filter_serialized);
 
   serialize_event(ev);
 

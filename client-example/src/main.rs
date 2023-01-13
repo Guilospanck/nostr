@@ -10,11 +10,24 @@
 //!
 //! You can use this example together with the `server` example.
 
-use std::env;
+use std::{env, collections::HashMap};
 
 use futures_util::{future, pin_mut, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+
+use serde::{Serialize};
+
+#[derive(Debug, Serialize)]
+pub struct Filter {
+  ids: Option<Vec<String>>,
+  authors: Option<Vec<String>>,
+  kinds: Option<Vec<u64>>,
+  tags: Option<HashMap<String, Vec<String>>>,
+  since: Option<String>,
+  until: Option<String>,
+  limit: Option<u64>
+}
 
 #[tokio::main]
 async fn main() {
@@ -68,6 +81,19 @@ async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
 
 // Our helper method which will send initial data upon connection.
 async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message>) {
-  let msg = String::from("{Hello: World}");
+  // let msg = String::from("{Hello: World}");
+
+  let filter = Filter {
+    ids: Some(["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec()),
+    authors: None,
+    kinds: None,
+    tags: None,
+    since: None,
+    until: None,
+    limit: None,
+  };
+
+  let msg = serde_json::to_string(&filter).unwrap();
+
   tx.unbounded_send(Message::binary(msg.as_bytes())).unwrap();
 }
