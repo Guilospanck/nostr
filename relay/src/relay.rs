@@ -4,9 +4,10 @@ use std::{
   io::Error as IoError,
   net::SocketAddr,
   sync::{Arc, Mutex},
-  thread,
+  thread, str::FromStr,
 };
 
+use bitcoin_hashes::{sha1, sha256, Hmac, Hash};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
@@ -163,12 +164,17 @@ pub struct Event {
   sig: String,     // 64-bytes signature of the id field
 }
 
-fn serialize_event(event: Event) -> String {
+/**
+  This is the way used to serialize and get the SHA256. This will equal to `event.id`.
+ */
+fn get_event_id(event: Event) -> String {
   let data = format!(
     "[{},\"{}\",{},{},{},\"{}\"]",
     0, event.pubkey, event.created_at, event.kind, event.tags, event.content
   );
-  data
+
+  let hash = sha256::Hash::hash(&data.as_bytes());
+  hash.to_string()
 }
 
 async fn handle_connection(
@@ -265,7 +271,7 @@ pub async fn initiate_relay() -> Result<(), IoError> {
   let events = Arc::new(Mutex::new(Vec::<String>::new()));
   let filters = Arc::new(Mutex::new(Vec::<String>::new()));
 
-  /* 
+  /*
 
   let ev = Event {
     id: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned(),
@@ -286,7 +292,7 @@ pub async fn initiate_relay() -> Result<(), IoError> {
 
   // {"id":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}
 
-  let event_test = serialize_event(ev);
+  let event_test = get_event_id(ev);
 
 
   // Serialized test event:
