@@ -13,7 +13,7 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::{frame::coding::Data, Message};
 
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
@@ -52,7 +52,7 @@ use uuid::Uuid;
  - limit: maximum number of events to be returned in the initial query
 */
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Filter {
   ids: Option<Vec<String>>,
   authors: Option<Vec<String>>,
@@ -92,6 +92,8 @@ impl EventTags {
    ```
 */
 pub type Tag = [String; 3];
+
+#[derive(Debug, Deserialize)]
 pub struct Tags(Vec<Tag>);
 
 impl std::fmt::Display for Tags {
@@ -150,6 +152,7 @@ pub enum EventKinds {
    }
    ```
 */
+#[derive(Debug, Deserialize)]
 pub struct Event {
   id: String,      // 32-bytes SHA256 of the serialized event data
   pubkey: String,  // 32-bytes hex-encoded public key of the event creator
@@ -204,6 +207,16 @@ async fn handle_connection(
     );
     let peers = peer_map.lock().unwrap();
 
+    match serde_json::from_str::<Filter>(msg.to_string().as_str()) {
+      Ok(filter) => { println!("{:?}", filter) },
+      Err(e) => { println!("It's not a Filter")},
+    }
+
+    match serde_json::from_str::<Event>(msg.to_string().as_str()) {
+      Ok(event) => { println!("{:?}", event) },
+      Err(e) => { println!("It's not an Event")},
+    }
+
     // push message to events
    let mut mutable_events =  events.lock().unwrap();
    mutable_events.push(msg.to_string());
@@ -237,6 +250,7 @@ async fn handle_connection(
 
 #[tokio::main]
 pub async fn initiate_relay() -> Result<(), IoError> {
+  // thread-safe and lockable
   let events = Arc::new(Mutex::new(Vec::<String>::new()));
 
   let ev = Event {
