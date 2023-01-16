@@ -13,7 +13,7 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::{frame::coding::Data, Message};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
@@ -93,7 +93,7 @@ impl EventTags {
 */
 pub type Tag = [String; 3];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Tags(Vec<Tag>);
 
 impl std::fmt::Display for Tags {
@@ -152,7 +152,7 @@ pub enum EventKinds {
    }
    ```
 */
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Event {
   id: String,      // 32-bytes SHA256 of the serialized event data
   pubkey: String,  // 32-bytes hex-encoded public key of the event creator
@@ -168,7 +168,6 @@ fn serialize_event(event: Event) -> String {
     "[{},\"{}\",{},{},{},\"{}\"]",
     0, event.pubkey, event.created_at, event.kind, event.tags, event.content
   );
-  println!("{}", data);
   data
 }
 
@@ -177,6 +176,7 @@ async fn handle_connection(
   raw_stream: TcpStream,
   addr: SocketAddr,
   events: Arc<Mutex<Vec<String>>>,
+  filters: Arc<Mutex<Vec<String>>>,
 ) {
   let start = SystemTime::now();
   let since_epoch = start
@@ -191,7 +191,7 @@ async fn handle_connection(
     .expect("Error during the websocket handshake occurred");
   println!("WebSocket connection established: {}", addr);
 
-  let subscription_id = Uuid::new_v4();
+  // let subscription_id = Uuid::new_v4();
 
   // Insert the write part of this peer to the peer map.
   let (tx, rx) = unbounded();
@@ -207,19 +207,29 @@ async fn handle_connection(
     );
     let peers = peer_map.lock().unwrap();
 
+    let mut mutable_events = events.lock().unwrap();
+    let mut mutable_filters = filters.lock().unwrap();
+
+    // Matches the type of structure that it's coming from the client.
     match serde_json::from_str::<Filter>(msg.to_string().as_str()) {
-      Ok(filter) => { println!("{:?}", filter) },
-      Err(e) => { println!("It's not a Filter")},
+      Ok(filter) => {
+        println!("{:?}", filter);
+        mutable_filters.push(msg.to_string());
+      }
+      Err(e) => {
+        println!("It's not a Filter")
+      }
     }
 
     match serde_json::from_str::<Event>(msg.to_string().as_str()) {
-      Ok(event) => { println!("{:?}", event) },
-      Err(e) => { println!("It's not an Event")},
+      Ok(event) => {
+        println!("{:?}", event);
+        mutable_events.push(msg.to_string());
+      }
+      Err(e) => {
+        println!("It's not an Event")
+      }
     }
-
-    // push message to events
-   let mut mutable_events =  events.lock().unwrap();
-   mutable_events.push(msg.to_string());
 
     // We want to broadcast the message to everyone except ourselves.
     let broadcast_recipients = peers
@@ -230,8 +240,9 @@ async fn handle_connection(
     for recp in broadcast_recipients {
       recp
         .unbounded_send(tokio_tungstenite::tungstenite::Message::Text(format!(
-          "Number of events: {}\n\n",
+          "Number of events: {}\nNumber of filters: {}\n\n",
           mutable_events.len(),
+          mutable_filters.len(),
         )))
         .unwrap();
     }
@@ -252,6 +263,9 @@ async fn handle_connection(
 pub async fn initiate_relay() -> Result<(), IoError> {
   // thread-safe and lockable
   let events = Arc::new(Mutex::new(Vec::<String>::new()));
+  let filters = Arc::new(Mutex::new(Vec::<String>::new()));
+
+  /* 
 
   let ev = Event {
     id: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned(),
@@ -266,9 +280,22 @@ pub async fn initiate_relay() -> Result<(), IoError> {
     sig: "e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c".to_owned()
   };
 
+  println!("{}", serde_json::to_string(&ev).unwrap());
+
+  // Serde JSON serialized event:
+
+  // {"id":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}
+
   let event_test = serialize_event(ev);
 
-  events.lock().unwrap().push(event_test);
+
+  // Serialized test event:
+
+  // [0,"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",1673002822,1,[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"Lorem ipsum dolor sit amet"]
+
+  */
+
+  // events.lock().unwrap().push(event_test);
 
   let addr = env::args()
     .nth(1)
@@ -284,8 +311,13 @@ pub async fn initiate_relay() -> Result<(), IoError> {
   // Let's spawn the handling of each connection in a separate task.
   while let Ok((stream, addr)) = listener.accept().await {
     println!("New connection attempt!!!\n\n\n");
-    let events_cloned = Arc::clone(&events);
-    tokio::spawn(handle_connection(state.clone(), stream, addr, events_cloned));
+    tokio::spawn(handle_connection(
+      state.clone(),
+      stream,
+      addr,
+      events.clone(),
+      filters.clone(),
+    ));
   }
 
   Ok(())
