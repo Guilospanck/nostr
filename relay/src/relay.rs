@@ -4,6 +4,7 @@ use std::{
   io::Error as IoError,
   net::SocketAddr,
   sync::{Arc, Mutex},
+  thread,
 };
 
 use futures_channel::mpsc::{unbounded, UnboundedSender};
@@ -12,46 +13,46 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::{frame::coding::Data, Message};
 
-use serde::{Serialize};
+use serde::Serialize;
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 /**
- * Nostr
- *
- * Client-to-Relay:
-    * ["EVENT", <event JSON>] -> used to publish events
-    * ["REQ", <subscription_id>, <filters JSON] -> used to request events and subscribe to new updates
-    * ["CLOSE", <subscription_id>] -> used to stop previous subscriptions
+* Nostr
+*
+* Client-to-Relay:
+   * ["EVENT", <event JSON>] -> used to publish events
+   * ["REQ", <subscription_id>, <filters JSON] -> used to request events and subscribe to new updates
+   * ["CLOSE", <subscription_id>] -> used to stop previous subscriptions
 
-    <subscription_id>: random string used to represent a subscription.
+   <subscription_id>: random string used to represent a subscription.
 
- */
+*/
 use uuid::Uuid;
 
 /**
-  Filters are data structures that clients send to relays (being the first on the first connection)
-  to request data from other clients.
-  The attributes of a Filter work as && (in other words, all the conditions set must be present
-  in the event in order to pass the filter)
+ Filters are data structures that clients send to relays (being the first on the first connection)
+ to request data from other clients.
+ The attributes of a Filter work as && (in other words, all the conditions set must be present
+ in the event in order to pass the filter)
 
-  - ids: a list of events of prefixes
-  - authors: a list of publickeys or prefixes, the pubkey of an event must be one of these
-  - kinds: a list of kind numbers
-  - tags: list of tags
-    [
-      e: a list of event ids that are referenced in an "e" tag,
-      p: a list of pubkeys that are referenced in an "p" tag,
-      ...
-    ]
-  - since: a timestamp. Events must be newer than this to pass
-  - until: a timestamp. Events must be older than this to pass
-  - limit: maximum number of events to be returned in the initial query  
- */
+ - ids: a list of events of prefixes
+ - authors: a list of publickeys or prefixes, the pubkey of an event must be one of these
+ - kinds: a list of kind numbers
+ - tags: list of tags
+   [
+     e: a list of event ids that are referenced in an "e" tag,
+     p: a list of pubkeys that are referenced in an "p" tag,
+     ...
+   ]
+ - since: a timestamp. Events must be newer than this to pass
+ - until: a timestamp. Events must be older than this to pass
+ - limit: maximum number of events to be returned in the initial query
+*/
 
- #[derive(Debug, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Filter {
   ids: Option<Vec<String>>,
   authors: Option<Vec<String>>,
@@ -59,7 +60,7 @@ pub struct Filter {
   tags: Option<HashMap<String, Vec<String>>>,
   since: Option<String>,
   until: Option<String>,
-  limit: Option<u64>
+  limit: Option<u64>,
 }
 
 pub enum EventTags {
@@ -168,7 +169,12 @@ fn serialize_event(event: Event) -> String {
   data
 }
 
-async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
+async fn handle_connection(
+  peer_map: PeerMap,
+  raw_stream: TcpStream,
+  addr: SocketAddr,
+  events: Arc<Mutex<Vec<String>>>,
+) {
   let start = SystemTime::now();
   let since_epoch = start
     .duration_since(UNIX_EPOCH)
@@ -198,6 +204,10 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
     );
     let peers = peer_map.lock().unwrap();
 
+    // push message to events
+   let mut mutable_events =  events.lock().unwrap();
+   mutable_events.push(msg.to_string());
+
     // We want to broadcast the message to everyone except ourselves.
     let broadcast_recipients = peers
       .iter()
@@ -205,7 +215,12 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
       .map(|(_, ws_sink)| ws_sink);
 
     for recp in broadcast_recipients {
-      recp.unbounded_send(msg.clone()).unwrap();
+      recp
+        .unbounded_send(tokio_tungstenite::tungstenite::Message::Text(format!(
+          "Number of events: {}\n\n",
+          mutable_events.len(),
+        )))
+        .unwrap();
     }
 
     future::ok(())
@@ -222,6 +237,8 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
 
 #[tokio::main]
 pub async fn initiate_relay() -> Result<(), IoError> {
+  let events = Arc::new(Mutex::new(Vec::<String>::new()));
+
   let ev = Event {
     id: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned(),
     pubkey: "02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76".to_owned(),
@@ -235,36 +252,27 @@ pub async fn initiate_relay() -> Result<(), IoError> {
     sig: "e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c".to_owned()
   };
 
-  let filter = Filter {
-    ids: Some(["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec()),
-    authors: None,
-    kinds: None,
-    tags: None,
-    since: None,
-    until: None,
-    limit: None,
-  };
+  let event_test = serialize_event(ev);
 
-  let filter_serialized = serde_json::to_string(&filter).unwrap();
-  println!("{}\n", filter_serialized);
+  events.lock().unwrap().push(event_test);
 
-  serialize_event(ev);
+  let addr = env::args()
+    .nth(1)
+    .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
-  // let addr = env::args()
-  //   .nth(1)
-  //   .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+  let state = PeerMap::new(Mutex::new(HashMap::new()));
 
-  // let state = PeerMap::new(Mutex::new(HashMap::new()));
+  // Create the event loop and TCP listener we'll accept connections on.
+  let try_socket = TcpListener::bind(&addr).await;
+  let listener = try_socket.expect("Failed to bind");
+  println!("Listening on: {}", addr);
 
-  // // Create the event loop and TCP listener we'll accept connections on.
-  // let try_socket = TcpListener::bind(&addr).await;
-  // let listener = try_socket.expect("Failed to bind");
-  // println!("Listening on: {}", addr);
-
-  // // Let's spawn the handling of each connection in a separate task.
-  // while let Ok((stream, addr)) = listener.accept().await {
-  //   tokio::spawn(handle_connection(state.clone(), stream, addr));
-  // }
+  // Let's spawn the handling of each connection in a separate task.
+  while let Ok((stream, addr)) = listener.accept().await {
+    println!("New connection attempt!!!\n\n\n");
+    let events_cloned = Arc::clone(&events);
+    tokio::spawn(handle_connection(state.clone(), stream, addr, events_cloned));
+  }
 
   Ok(())
 }
