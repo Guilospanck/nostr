@@ -16,17 +16,17 @@ use futures_util::{future, pin_mut, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
-use serde::{Serialize};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default, Deserialize)]
 pub struct Filter {
-  ids: Option<Vec<String>>,
-  authors: Option<Vec<String>>,
-  kinds: Option<Vec<u64>>,
-  tags: Option<HashMap<String, Vec<String>>>,
-  since: Option<String>,
-  until: Option<String>,
-  limit: Option<u64>
+  pub ids: Option<Vec<String>>,
+  pub authors: Option<Vec<String>>,
+  pub kinds: Option<Vec<u64>>,
+  pub tags: Option<HashMap<String, Vec<String>>>,
+  pub since: Option<String>,
+  pub until: Option<String>,
+  pub limit: Option<u64>
 }
 
 #[tokio::main]
@@ -80,9 +80,8 @@ async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
 }
 
 // Our helper method which will send initial data upon connection.
+// It will require some data from the relay using a filter subscription.
 async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message>) {
-  // let msg = String::from("{Hello: World}");
-
   let filter = Filter {
     ids: Some(["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec()),
     authors: None,
@@ -93,7 +92,10 @@ async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message
     limit: None,
   };
 
-  let msg = serde_json::to_string(&filter).unwrap();
+  let filter_string = serde_json::to_string(&filter).unwrap();
 
-  tx.unbounded_send(Message::binary(msg.as_bytes())).unwrap();
+  // ["REQ","change-id-sub",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]
+  let filter_subscription = format!("[\"{}\",\"{}\",{}]", String::from("REQ"), String::from("change-id-sub"), filter_string);
+
+  tx.unbounded_send(Message::binary(filter_subscription.as_bytes())).unwrap();
 }

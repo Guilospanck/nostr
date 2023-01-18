@@ -1,13 +1,15 @@
 use std::{
+  any::{self, Any},
   collections::HashMap,
   env,
   io::Error as IoError,
   net::SocketAddr,
+  str::FromStr,
   sync::{Arc, Mutex},
-  thread, str::FromStr,
+  thread,
 };
 
-use bitcoin_hashes::{sha1, sha256, Hmac, Hash};
+use bitcoin_hashes::{sha1, sha256, Hash, Hmac};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
@@ -20,6 +22,8 @@ type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use uuid::Uuid;
 /**
 * Nostr
 *
@@ -31,7 +35,40 @@ use std::time::{SystemTime, UNIX_EPOCH};
    <subscription_id>: random string used to represent a subscription.
 
 */
-use uuid::Uuid;
+pub enum ClientToRelayComm {
+  Event,
+  Request,
+  Close,
+}
+
+impl ClientToRelayComm {
+  fn as_str(&self) -> &'static str {
+    match self {
+      ClientToRelayComm::Event => "EVENT",
+      ClientToRelayComm::Request => "REQ",
+      ClientToRelayComm::Close => "CLOSE",
+    }
+  }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ClientToRelayCommEvent {
+  pub code: String,
+  pub event: Event,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ClientToRelayCommRequest {
+  pub code: String,
+  pub subscription_id: String,
+  pub filter: Filter,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ClientToRelayCommClose {
+  pub code: String,
+  pub subscription_id: String,
+}
 
 /**
  Filters are data structures that clients send to relays (being the first on the first connection)
@@ -53,7 +90,7 @@ use uuid::Uuid;
  - limit: maximum number of events to be returned in the initial query
 */
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Filter {
   ids: Option<Vec<String>>,
   authors: Option<Vec<String>>,
@@ -94,7 +131,7 @@ impl EventTags {
 */
 pub type Tag = [String; 3];
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Tags(Vec<Tag>);
 
 impl std::fmt::Display for Tags {
@@ -153,7 +190,7 @@ pub enum EventKinds {
    }
    ```
 */
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Event {
   id: String,      // 32-bytes SHA256 of the serialized event data
   pubkey: String,  // 32-bytes hex-encoded public key of the event creator
@@ -165,8 +202,8 @@ pub struct Event {
 }
 
 /**
-  This is the way used to serialize and get the SHA256. This will equal to `event.id`.
- */
+ This is the way used to serialize and get the SHA256. This will equal to `event.id`.
+*/
 fn get_event_id(event: Event) -> String {
   let data = format!(
     "[{},\"{}\",{},{},{},\"{}\"]",
@@ -175,6 +212,41 @@ fn get_event_id(event: Event) -> String {
 
   let hash = sha256::Hash::hash(&data.as_bytes());
   hash.to_string()
+}
+
+/*
+  Expects a message like:
+  let msg = "[\"EVENT\",{\"id\":\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\",\"pubkey\":\"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76\",\"created_at\":1673002822,\"kind\":1,\"tags\":[[\"e\",\"688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6\",\"wss://relay.damus.io\"],[\"p\",\"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76\",\"\"]],\"content\":\"Lorem ipsum dolor sit amet\",\"sig\":\"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c\"}]".to_owned();
+  let msg = "[\"REQ\",\"asdf\",\"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\"]".to_owned();
+  let msg = "[\"CLOSE\",\"asdf\"]".to_owned();
+*/
+fn parse_msg_from_client(msg: &str) {
+  match serde_json::from_str::<ClientToRelayCommEvent>(msg) {
+    Ok(data) => {
+      println!("{:?}", data)
+    }
+    Err(e) => {
+      eprintln!("\nNot an event: {}", e)
+    }
+  };
+
+  match serde_json::from_str::<ClientToRelayCommRequest>(msg) {
+    Ok(data) => {
+      println!("{:?}", data)
+    }
+    Err(e) => {
+      eprintln!("\nNot a request: {}", e)
+    }
+  };
+
+  match serde_json::from_str::<ClientToRelayCommClose>(msg) {
+    Ok(data) => {
+      println!("{:?}", data)
+    }
+    Err(e) => {
+      eprintln!("\nNot a close: {}", e)
+    }
+  };
 }
 
 async fn handle_connection(
@@ -216,26 +288,7 @@ async fn handle_connection(
     let mut mutable_events = events.lock().unwrap();
     let mut mutable_filters = filters.lock().unwrap();
 
-    // Matches the type of structure that it's coming from the client.
-    match serde_json::from_str::<Filter>(msg.to_string().as_str()) {
-      Ok(filter) => {
-        println!("{:?}", filter);
-        mutable_filters.push(msg.to_string());
-      }
-      Err(e) => {
-        println!("It's not a Filter")
-      }
-    }
-
-    match serde_json::from_str::<Event>(msg.to_string().as_str()) {
-      Ok(event) => {
-        println!("{:?}", event);
-        mutable_events.push(msg.to_string());
-      }
-      Err(e) => {
-        println!("It's not an Event")
-      }
-    }
+    parse_msg_from_client(msg.to_text().unwrap());
 
     // We want to broadcast the message to everyone except ourselves.
     let broadcast_recipients = peers
