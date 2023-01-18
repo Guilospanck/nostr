@@ -17,6 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use serde::{Serialize, Deserialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Default, Deserialize)]
 pub struct Filter {
@@ -93,9 +94,10 @@ async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message
   };
 
   let filter_string = serde_json::to_string(&filter).unwrap();
+  let subscription_id = Uuid::new_v4().to_string();
 
-  // ["REQ","change-id-sub",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]
-  let filter_subscription = format!("[\"{}\",\"{}\",{}]", String::from("REQ"), String::from("change-id-sub"), filter_string);
+  // ["REQ","some-random-subs-id",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]
+  let filter_subscription = format!("[\"{}\",\"{}\",{}]", String::from("REQ"), subscription_id, filter_string);
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes())).unwrap();
 }
