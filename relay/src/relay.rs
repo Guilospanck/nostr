@@ -1,20 +1,17 @@
 use std::{
-  any::{self, Any},
   collections::HashMap,
   env,
   io::Error as IoError,
   net::SocketAddr,
-  str::FromStr,
-  sync::{Arc, Mutex},
-  thread,
+  sync::{Arc, Mutex, MutexGuard},
 };
 
-use bitcoin_hashes::{sha1, sha256, Hash, Hmac};
+use bitcoin_hashes::{sha256, Hash};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::tungstenite::protocol::{frame::coding::Data, Message};
+use tokio_tungstenite::tungstenite::protocol::Message;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,13 +20,16 @@ type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use uuid::Uuid;
 /**
 * Nostr
 *
 * Client-to-Relay:
    * ["EVENT", <event JSON>] -> used to publish events
    * ["REQ", <subscription_id>, <filters JSON] -> used to request events and subscribe to new updates
+
+   A REQ message may contain multiple filters. In this case, events that match any of the filters are to be returned,
+   i.e., multiple filters are to be interpreted as || conditions.
+
    * ["CLOSE", <subscription_id>] -> used to stop previous subscriptions
 
    <subscription_id>: random string used to represent a subscription.
@@ -51,20 +51,20 @@ impl ClientToRelayComm {
   }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct ClientToRelayCommEvent {
   pub code: String,
   pub event: Event,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct ClientToRelayCommRequest {
   pub code: String,
   pub subscription_id: String,
   pub filter: Filter,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct ClientToRelayCommClose {
   pub code: String,
   pub subscription_id: String,
@@ -90,7 +90,7 @@ pub struct ClientToRelayCommClose {
  - limit: maximum number of events to be returned in the initial query
 */
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Filter {
   ids: Option<Vec<String>>,
   authors: Option<Vec<String>>,
@@ -131,7 +131,7 @@ impl EventTags {
 */
 pub type Tag = [String; 3];
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Tags(Vec<Tag>);
 
 impl std::fmt::Display for Tags {
@@ -190,7 +190,7 @@ pub enum EventKinds {
    }
    ```
 */
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct Event {
   id: String,      // 32-bytes SHA256 of the serialized event data
   pubkey: String,  // 32-bytes hex-encoded public key of the event creator
@@ -220,9 +220,16 @@ fn get_event_id(event: Event) -> String {
   let msg = "[\"REQ\",\"asdf\",\"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\"]".to_owned();
   let msg = "[\"CLOSE\",\"asdf\"]".to_owned();
 */
-fn parse_msg_from_client(msg: &str) {
+fn parse_msg_from_client(
+  msg: &str,
+  mutable_events: &mut MutexGuard<Vec<ClientToRelayCommEvent>>,
+  mutable_filters: &mut MutexGuard<Vec<ClientToRelayCommRequest>>,
+) {
   match serde_json::from_str::<ClientToRelayCommEvent>(msg) {
     Ok(data) => {
+      // TODO: save the Event in the internal database and
+      // send them to all people that have a filter that match.
+      mutable_events.push(data.clone());
       println!("{:?}", data)
     }
     Err(e) => {
@@ -232,6 +239,8 @@ fn parse_msg_from_client(msg: &str) {
 
   match serde_json::from_str::<ClientToRelayCommRequest>(msg) {
     Ok(data) => {
+      // TODO: save the filter and query internal database and send events that match the filter.
+      mutable_filters.push(data.clone());
       println!("{:?}", data)
     }
     Err(e) => {
@@ -241,6 +250,7 @@ fn parse_msg_from_client(msg: &str) {
 
   match serde_json::from_str::<ClientToRelayCommClose>(msg) {
     Ok(data) => {
+      // TODO: closes the connection with the <subscription-id> client.
       println!("{:?}", data)
     }
     Err(e) => {
@@ -253,8 +263,8 @@ async fn handle_connection(
   peer_map: PeerMap,
   raw_stream: TcpStream,
   addr: SocketAddr,
-  events: Arc<Mutex<Vec<String>>>,
-  filters: Arc<Mutex<Vec<String>>>,
+  events: Arc<Mutex<Vec<ClientToRelayCommEvent>>>,
+  filters: Arc<Mutex<Vec<ClientToRelayCommRequest>>>,
 ) {
   let start = SystemTime::now();
   let since_epoch = start
@@ -268,8 +278,6 @@ async fn handle_connection(
     .await
     .expect("Error during the websocket handshake occurred");
   println!("WebSocket connection established: {}", addr);
-
-  // let subscription_id = Uuid::new_v4();
 
   // Insert the write part of this peer to the peer map.
   let (tx, rx) = unbounded();
@@ -288,7 +296,7 @@ async fn handle_connection(
     let mut mutable_events = events.lock().unwrap();
     let mut mutable_filters = filters.lock().unwrap();
 
-    parse_msg_from_client(msg.to_text().unwrap());
+    parse_msg_from_client(msg.to_text().unwrap(), &mut mutable_events, &mut mutable_filters);
 
     // We want to broadcast the message to everyone except ourselves.
     let broadcast_recipients = peers
@@ -321,8 +329,8 @@ async fn handle_connection(
 #[tokio::main]
 pub async fn initiate_relay() -> Result<(), IoError> {
   // thread-safe and lockable
-  let events = Arc::new(Mutex::new(Vec::<String>::new()));
-  let filters = Arc::new(Mutex::new(Vec::<String>::new()));
+  let events = Arc::new(Mutex::new(Vec::<ClientToRelayCommEvent>::new()));
+  let filters = Arc::new(Mutex::new(Vec::<ClientToRelayCommRequest>::new()));
 
   /*
 

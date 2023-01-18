@@ -32,6 +32,8 @@ pub struct Filter {
 
 #[tokio::main]
 async fn main() {
+  let mut subscriptions_ids = Vec::<String>::new();
+
   let connect_addr = env::args()
     .nth(1)
     .unwrap_or_else(|| panic!("this program requires at least one argument"));
@@ -45,7 +47,7 @@ async fn main() {
   println!("WebSocket handshake has been successfully completed");
 
   // send initial message
-  send_initial_message(stdin_tx).await;  
+  send_initial_message(stdin_tx, &mut subscriptions_ids).await;  
 
   let (write, read) = ws_stream.split();
 
@@ -82,7 +84,7 @@ async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
 
 // Our helper method which will send initial data upon connection.
 // It will require some data from the relay using a filter subscription.
-async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message>) {
+async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message>, subscriptions_ids: &mut Vec<String>) {
   let filter = Filter {
     ids: Some(["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec()),
     authors: None,
@@ -95,8 +97,10 @@ async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message
 
   let filter_string = serde_json::to_string(&filter).unwrap();
   let subscription_id = Uuid::new_v4().to_string();
+  subscriptions_ids.push(subscription_id.clone());
 
   // ["REQ","some-random-subs-id",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]
+  // ["EVENT",{"id":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
   let filter_subscription = format!("[\"{}\",\"{}\",{}]", String::from("REQ"), subscription_id, filter_string);
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes())).unwrap();
