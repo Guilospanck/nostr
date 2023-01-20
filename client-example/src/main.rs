@@ -10,13 +10,13 @@
 //!
 //! You can use this example together with the `server` example.
 
-use std::{env, collections::HashMap};
+use std::{collections::HashMap, env, sync::{Arc, Mutex}};
 
 use futures_util::{future, pin_mut, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Default, Deserialize)]
@@ -27,17 +27,27 @@ pub struct Filter {
   pub tags: Option<HashMap<String, Vec<String>>>,
   pub since: Option<String>,
   pub until: Option<String>,
-  pub limit: Option<u64>
+  pub limit: Option<u64>,
 }
+
+pub const LIST_OF_RELAYS: [&str; 1] = ["ws://127.0.0.1:8080/"];
 
 #[tokio::main]
 async fn main() {
-  let mut subscriptions_ids = Vec::<String>::new();
+  let subscriptions_ids = Arc::new(Mutex::new(Vec::<String>::new()));
 
-  let connect_addr = env::args()
-    .nth(1)
-    .unwrap_or_else(|| panic!("this program requires at least one argument"));
+  for addr in LIST_OF_RELAYS.iter() {
+    println!("Connecting to relay {:?}...", addr);
+    tokio::spawn(handle_connection(
+      *addr.to_string(),
+      subscriptions_ids.clone(),
+    ));
+  }
 
+  
+}
+
+pub async fn handle_connection(connect_addr: String, subscriptions_ids: Arc<Mutex<Vec<Vec<String>>>>) {
   let url = url::Url::parse(&connect_addr).unwrap();
 
   let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
@@ -47,7 +57,7 @@ async fn main() {
   println!("WebSocket handshake has been successfully completed");
 
   // send initial message
-  send_initial_message(stdin_tx, &mut subscriptions_ids).await;  
+  send_initial_message(stdin_tx, &mut subscriptions_ids).await;
 
   let (write, read) = ws_stream.split();
 
@@ -57,8 +67,16 @@ async fn main() {
   // (The WS is forwarding messages from other clients)
   let ws_to_stdout = {
     read.for_each(|message| async {
-      let data = message.unwrap().into_data();
-      tokio::io::stdout().write_all(&data).await.unwrap();
+      match message {
+        Ok(msg) => {
+          let data = msg.into_data();
+          tokio::io::stdout().write_all(&data).await.unwrap();
+        }
+        Err(_err) => {
+          eprintln!("Connection closed");
+          return ();
+        }
+      }
     })
   };
 
@@ -84,9 +102,14 @@ async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
 
 // Our helper method which will send initial data upon connection.
 // It will require some data from the relay using a filter subscription.
-async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message>, subscriptions_ids: &mut Vec<String>) {
+async fn send_initial_message(
+  tx: futures_channel::mpsc::UnboundedSender<Message>,
+  subscriptions_ids: &mut Vec<String>,
+) {
   let filter = Filter {
-    ids: Some(["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec()),
+    ids: Some(
+      ["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".to_owned()].to_vec(),
+    ),
     authors: None,
     kinds: None,
     tags: None,
@@ -101,7 +124,14 @@ async fn send_initial_message(tx: futures_channel::mpsc::UnboundedSender<Message
 
   // ["REQ","some-random-subs-id",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]
   // ["EVENT",{"id":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
-  let filter_subscription = format!("[\"{}\",\"{}\",{}]", String::from("REQ"), subscription_id, filter_string);
+  // ["CLOSE","some-random-subs-id"]
+  let filter_subscription = format!(
+    "[\"{}\",\"{}\",{}]",
+    String::from("REQ"),
+    subscription_id,
+    filter_string
+  );
 
-  tx.unbounded_send(Message::binary(filter_subscription.as_bytes())).unwrap();
+  tx.unbounded_send(Message::binary(filter_subscription.as_bytes()))
+    .unwrap();
 }

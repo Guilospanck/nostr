@@ -8,7 +8,7 @@ use std::{
 
 use bitcoin_hashes::{sha256, Hash};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
-use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use futures_util::{future, pin_mut, stream::TryStreamExt, SinkExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -214,6 +214,12 @@ fn get_event_id(event: Event) -> String {
   hash.to_string()
 }
 
+struct MsgResult {
+  is_close: bool,
+  is_event: bool,
+  is_filter: bool,
+}
+
 /*
   Expects a message like:
   let msg = "[\"EVENT\",{\"id\":\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\",\"pubkey\":\"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76\",\"created_at\":1673002822,\"kind\":1,\"tags\":[[\"e\",\"688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6\",\"wss://relay.damus.io\"],[\"p\",\"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76\",\"\"]],\"content\":\"Lorem ipsum dolor sit amet\",\"sig\":\"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c\"}]".to_owned();
@@ -224,39 +230,40 @@ fn parse_msg_from_client(
   msg: &str,
   mutable_events: &mut MutexGuard<Vec<ClientToRelayCommEvent>>,
   mutable_filters: &mut MutexGuard<Vec<ClientToRelayCommRequest>>,
+) -> MsgResult {
+  let mut result = MsgResult {
+    is_close: false,
+    is_event: false,
+    is_filter: false,
+  };
+
+  if serde_json::from_str::<ClientToRelayCommEvent>(msg).is_ok() {
+    let data = serde_json::from_str::<ClientToRelayCommEvent>(msg).unwrap();
+    println!("{:?}", data);
+    mutable_events.push(data.clone());
+    result.is_event = true;
+    return result;
+  }
+
+  if serde_json::from_str::<ClientToRelayCommRequest>(msg).is_ok() {
+    let data = serde_json::from_str::<ClientToRelayCommRequest>(msg).unwrap();
+    println!("{:?}", data);
+    mutable_filters.push(data.clone());
+    result.is_filter = true;
+    return result;
+  }
+
+  if serde_json::from_str::<ClientToRelayCommClose>(msg).is_ok() {
+    result.is_close = true;
+    return result;
+  }
+
+  result
+}
+
+fn send_message_to_matched_filters(
+  mutable_filters: &mut MutexGuard<Vec<ClientToRelayCommRequest>>,
 ) {
-  match serde_json::from_str::<ClientToRelayCommEvent>(msg) {
-    Ok(data) => {
-      // TODO: save the Event in the internal database and
-      // send them to all people that have a filter that match.
-      mutable_events.push(data.clone());
-      println!("{:?}", data)
-    }
-    Err(e) => {
-      eprintln!("\nNot an event: {}", e)
-    }
-  };
-
-  match serde_json::from_str::<ClientToRelayCommRequest>(msg) {
-    Ok(data) => {
-      // TODO: save the filter and query internal database and send events that match the filter.
-      mutable_filters.push(data.clone());
-      println!("{:?}", data)
-    }
-    Err(e) => {
-      eprintln!("\nNot a request: {}", e)
-    }
-  };
-
-  match serde_json::from_str::<ClientToRelayCommClose>(msg) {
-    Ok(data) => {
-      // TODO: closes the connection with the <subscription-id> client.
-      println!("{:?}", data)
-    }
-    Err(e) => {
-      eprintln!("\nNot a close: {}", e)
-    }
-  };
 }
 
 async fn handle_connection(
@@ -266,11 +273,11 @@ async fn handle_connection(
   events: Arc<Mutex<Vec<ClientToRelayCommEvent>>>,
   filters: Arc<Mutex<Vec<ClientToRelayCommRequest>>>,
 ) {
-  let start = SystemTime::now();
-  let since_epoch = start
-    .duration_since(UNIX_EPOCH)
-    .expect("Time went backwards");
-  println!("Time now in seconds: {}", since_epoch.as_secs());
+  // let start = SystemTime::now();
+  // let since_epoch = start
+  //   .duration_since(UNIX_EPOCH)
+  //   .expect("Time went backwards");
+  // println!("Time now in seconds: {}", since_epoch.as_secs());
 
   println!("Incoming TCP connection from: {}", addr);
 
@@ -296,7 +303,24 @@ async fn handle_connection(
     let mut mutable_events = events.lock().unwrap();
     let mut mutable_filters = filters.lock().unwrap();
 
-    parse_msg_from_client(msg.to_text().unwrap(), &mut mutable_events, &mut mutable_filters);
+    let msg_parsed = parse_msg_from_client(
+      msg.to_text().unwrap(),
+      &mut mutable_events,
+      &mut mutable_filters,
+    );
+
+    if msg_parsed.is_close {
+      // TODO: remove filters/events from peer
+      return future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+    }
+
+    if msg_parsed.is_filter {
+      // TODO: return to this peer all events in memory that match this filter.
+    }
+
+    if msg_parsed.is_event {
+      // TODO: verify event against all saved filters and send it to matched ones
+    }
 
     // We want to broadcast the message to everyone except ourselves.
     let broadcast_recipients = peers
