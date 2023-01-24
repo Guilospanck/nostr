@@ -239,7 +239,7 @@ fn parse_msg_from_client(
 
   if serde_json::from_str::<ClientToRelayCommEvent>(msg).is_ok() {
     let data = serde_json::from_str::<ClientToRelayCommEvent>(msg).unwrap();
-    println!("{:?}", data);
+    println!("Event:\n {:?}", data);
     mutable_events.push(data.clone());
     result.is_event = true;
     return result;
@@ -247,7 +247,7 @@ fn parse_msg_from_client(
 
   if serde_json::from_str::<ClientToRelayCommRequest>(msg).is_ok() {
     let data = serde_json::from_str::<ClientToRelayCommRequest>(msg).unwrap();
-    println!("{:?}", data);
+    println!("Request:\n {:?}", data);
     mutable_filters.push(data.clone());
     result.is_filter = true;
     return result;
@@ -259,11 +259,6 @@ fn parse_msg_from_client(
   }
 
   result
-}
-
-fn send_message_to_matched_filters(
-  mutable_filters: &mut MutexGuard<Vec<ClientToRelayCommRequest>>,
-) {
 }
 
 async fn handle_connection(
@@ -298,8 +293,8 @@ async fn handle_connection(
       addr,
       msg.to_text().unwrap()
     );
-    let peers = peer_map.lock().unwrap();
-
+    
+    let mut peers = peer_map.lock().unwrap();
     let mut mutable_events = events.lock().unwrap();
     let mut mutable_filters = filters.lock().unwrap();
 
@@ -310,7 +305,9 @@ async fn handle_connection(
     );
 
     if msg_parsed.is_close {
-      // TODO: remove filters/events from peer
+      // TODO: remove disconnected peer and filters/events from him
+      peers.retain(|peer_addr, _| peer_addr != &addr);
+
       return future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
     }
 
@@ -352,10 +349,6 @@ async fn handle_connection(
 
 #[tokio::main]
 pub async fn initiate_relay() -> Result<(), IoError> {
-  // thread-safe and lockable
-  let events = Arc::new(Mutex::new(Vec::<ClientToRelayCommEvent>::new()));
-  let filters = Arc::new(Mutex::new(Vec::<ClientToRelayCommRequest>::new()));
-
   /*
 
   let ev = Event {
@@ -386,12 +379,13 @@ pub async fn initiate_relay() -> Result<(), IoError> {
 
   */
 
-  // events.lock().unwrap().push(event_test);
-
   let addr = env::args()
     .nth(1)
-    .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+    .unwrap_or_else(|| "127.0.0.1:8081".to_string());
 
+  // thread-safe and lockable
+  let events = Arc::new(Mutex::new(Vec::<ClientToRelayCommEvent>::new()));
+  let filters = Arc::new(Mutex::new(Vec::<ClientToRelayCommRequest>::new()));
   let state = PeerMap::new(Mutex::new(HashMap::new()));
 
   // Create the event loop and TCP listener we'll accept connections on.
@@ -399,17 +393,18 @@ pub async fn initiate_relay() -> Result<(), IoError> {
   let listener = try_socket.expect("Failed to bind");
   println!("Listening on: {}", addr);
 
-  // Let's spawn the handling of each connection in a separate task.
-  while let Ok((stream, addr)) = listener.accept().await {
-    println!("New connection attempt!!!\n\n\n");
-    tokio::spawn(handle_connection(
-      state.clone(),
-      stream,
-      addr,
-      events.clone(),
-      filters.clone(),
-    ));
-  }
+  loop {
+    // Asynchronously wait for an inbound TCPStream
+    let (stream, addr) = listener.accept().await?;
 
-  Ok(())
+    // Clone the states we want to be able to mutate
+    // throughout different threads
+    let events = Arc::clone(&events);
+    let filters = Arc::clone(&filters);
+    let state = Arc::clone(&state);
+
+    // Spawn the handler to run async
+    println!("New connection attempt!!!\n\n\n");
+    tokio::spawn(handle_connection(state, stream, addr, events, filters));
+  }
 }
