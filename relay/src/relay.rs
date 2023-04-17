@@ -8,7 +8,7 @@ use std::{
 
 use bitcoin_hashes::{sha256, Hash};
 use futures_channel::mpsc::{unbounded, UnboundedSender};
-use futures_util::{future, pin_mut, stream::TryStreamExt, SinkExt, StreamExt};
+use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -17,8 +17,6 @@ use serde::{Deserialize, Serialize};
 
 type Tx = UnboundedSender<Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
-
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /**
 * Nostr
@@ -307,7 +305,6 @@ async fn handle_connection(
     if msg_parsed.is_close {
       // TODO: remove disconnected peer and filters/events from him
       peers.retain(|peer_addr, _| peer_addr != &addr);
-
       return future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
     }
 
@@ -347,6 +344,11 @@ async fn handle_connection(
   peer_map.lock().unwrap().remove(&addr);
 }
 
+struct PeerMapAndSubscriptionID {
+  peer: PeerMap,
+  subscription_id: String,
+}
+
 #[tokio::main]
 pub async fn initiate_relay() -> Result<(), IoError> {
   /*
@@ -381,7 +383,7 @@ pub async fn initiate_relay() -> Result<(), IoError> {
 
   let addr = env::args()
     .nth(1)
-    .unwrap_or_else(|| "127.0.0.1:8081".to_string());
+    .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
   // thread-safe and lockable
   let events = Arc::new(Mutex::new(Vec::<ClientToRelayCommEvent>::new()));

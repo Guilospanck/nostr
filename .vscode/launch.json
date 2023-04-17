@@ -1,0 +1,24 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Relay",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/relay/target/debug/main",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Client",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/client-example/target/debug/client",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

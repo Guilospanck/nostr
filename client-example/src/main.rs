@@ -12,8 +12,7 @@
 
 use std::{
   collections::HashMap,
-  env,
-  sync::{Arc, Mutex, MutexGuard},
+  sync::{Arc, Mutex},
 };
 
 use futures_util::{
