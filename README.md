@@ -1,5 +1,12 @@
 # nostr
 
+## TODO
+
+First, let's check all the required NIPs, then we can start adding new optional ones.
+
+### Required NIPs
+[ ] NIP01
+
 ## How to run
 
 Go to `relay`:
@@ -14,7 +21,7 @@ it will start listening on the `127.0.0.1:8080` or you can also pass the host:po
 cargo run 127.0.0.1:8080
 ```
 
-Then go to `client-example` and run:
+Then go to `client` and run:
 
 ```bash
 cargo run
