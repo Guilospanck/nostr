@@ -65,30 +65,3 @@ fn generate_keys() {
   assert_eq!(pubkey, PublicKey::from_secret_key(&secp, &seckey));
 }
 
-// fn main() {
-//   generate_keys();
-//   let secp = Secp256k1::new();
-
-//   let seckey = [
-//     59, 148, 11, 85, 134, 130, 61, 253, 2, 174, 59, 70, 27, 180, 51, 107, 94, 203, 174, 253, 102,
-//     39, 170, 146, 46, 252, 4, 143, 236, 12, 136, 28,
-//   ];
-//   let pubkey = [
-//     2, 29, 21, 35, 7, 198, 183, 43, 14, 208, 65, 139, 14, 112, 205, 128, 231, 245, 41, 91, 141,
-//     134, 245, 114, 45, 63, 82, 19, 251, 210, 57, 79, 54,
-//   ];
-//   let msg = b"This is some message";
-
-//   // ECDSA
-//   let signature_ecdsa = sign_ecdsa(&secp, msg, seckey).unwrap();
-//   let serialize_sig_ecdsa = signature_ecdsa.serialize_compact();
-//   println!("ECDSA => {:?}\n", serialize_sig_ecdsa.to_hex()); // 64 bytes
-//   assert!(verify_edcsa(&secp, msg, serialize_sig_ecdsa, pubkey).unwrap());
-
-//   // Schnorr
-//   let signature_schnorr = sign_schnorr(&secp, msg, seckey).unwrap();
-//   println!("Schnorr => {:?}", signature_schnorr.to_hex()); // 64 bytes
-//   let seckey = SecretKey::from_slice(&seckey).unwrap();
-//   let keypair = KeyPair::from_secret_key(&secp, &seckey);
-//   assert!(verify_schnorr(&secp, msg, signature_schnorr, keypair).unwrap());
-// }
