@@ -1,5 +1,4 @@
 use std::{
-  collections::HashMap,
   env,
   io::Error as IoError,
   net::SocketAddr,
@@ -12,15 +11,37 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use crate::client_to_relay_comms::{ClientToRelayCommEvent, ClientToRelayCommRequest, ClientToRelayCommClose};
+use crate::{
+  client_to_relay_comms::{
+    ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest,
+  },
+  event::Event,
+  filter::Filter,
+};
 
 type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
+struct ClientConnectionInfo {
+  subscription_id: String,
+  tx: Tx,
+  socket_addr: SocketAddr,
+  events: Vec<Event>,
+  filter: Filter,
+}
+
+#[derive(Default)]
+struct AnyConnection {
+  close: ClientToRelayCommClose,
+  event: ClientToRelayCommEvent,
+  request: ClientToRelayCommRequest,
+}
+
+#[derive(Default)]
 struct MsgResult {
   is_close: bool,
   is_event: bool,
-  is_filter: bool,
+  is_request: bool,
+  data: AnyConnection,
 }
 
 /*
@@ -29,47 +50,40 @@ struct MsgResult {
   let msg = "[\"REQ\",\"asdf\",\"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\"]".to_owned();
   let msg = "[\"CLOSE\",\"asdf\"]".to_owned();
 */
-fn parse_msg_from_client(
-  msg: &str,
-  mutable_events: &mut MutexGuard<Vec<ClientToRelayCommEvent>>,
-  mutable_filters: &mut MutexGuard<Vec<ClientToRelayCommRequest>>,
-) -> MsgResult {
-  let mut result = MsgResult {
-    is_close: false,
-    is_event: false,
-    is_filter: false,
-  };
+fn parse_message_received_from_client(msg: &str) -> MsgResult {
+  let mut result = MsgResult::default();
 
-  if serde_json::from_str::<ClientToRelayCommEvent>(msg).is_ok() {
-    let data = serde_json::from_str::<ClientToRelayCommEvent>(msg).unwrap();
-    println!("Event:\n {:?}", data);
-    mutable_events.push(data.clone());
-    result.is_event = true;
-    return result;
-  }
+  if let Ok(close_msg) = serde_json::from_str::<ClientToRelayCommClose>(msg) {
+    println!("Close:\n {:?}", close_msg);
 
-  if serde_json::from_str::<ClientToRelayCommRequest>(msg).is_ok() {
-    let data = serde_json::from_str::<ClientToRelayCommRequest>(msg).unwrap();
-    println!("Request:\n {:?}", data);
-    mutable_filters.push(data.clone());
-    result.is_filter = true;
-    return result;
-  }
-
-  if serde_json::from_str::<ClientToRelayCommClose>(msg).is_ok() {
     result.is_close = true;
+    result.data.close = close_msg;
     return result;
   }
 
-  result
+  if let Ok(event_msg) = serde_json::from_str::<ClientToRelayCommEvent>(msg) {
+    println!("Event:\n {:?}", event_msg);
+
+    result.is_event = true;
+    result.data.event = event_msg.clone();
+    return result;
+  }
+
+  if let Ok(request_msg) = serde_json::from_str::<ClientToRelayCommRequest>(msg) {
+    println!("Request:\n {:?}", request_msg);
+
+    result.is_request = true;
+    result.data.request = request_msg;
+    return result;
+  }
+
+  unreachable!();
 }
 
 async fn handle_connection(
-  peer_map: PeerMap,
   raw_stream: TcpStream,
   addr: SocketAddr,
-  events: Arc<Mutex<Vec<ClientToRelayCommEvent>>>,
-  filters: Arc<Mutex<Vec<ClientToRelayCommRequest>>>,
+  client_connection_info: Arc<Mutex<Vec<ClientConnectionInfo>>>,
 ) {
   // let start = SystemTime::now();
   // let since_epoch = start
@@ -84,9 +98,7 @@ async fn handle_connection(
     .expect("Error during the websocket handshake occurred");
   println!("WebSocket connection established: {}", addr);
 
-  // Insert the write part of this peer to the peer map.
   let (tx, rx) = unbounded();
-  peer_map.lock().unwrap().insert(addr, tx);
 
   let (outgoing, incoming) = ws_stream.split();
 
@@ -97,42 +109,58 @@ async fn handle_connection(
       msg.to_text().unwrap()
     );
 
-    let mut peers = peer_map.lock().unwrap();
-    let mut mutable_events = events.lock().unwrap();
-    let mut mutable_filters = filters.lock().unwrap();
+    let mut clients = client_connection_info.lock().unwrap();
 
-    let msg_parsed = parse_msg_from_client(
-      msg.to_text().unwrap(),
-      &mut mutable_events,
-      &mut mutable_filters,
-    );
+    let msg_parsed = parse_message_received_from_client(msg.to_text().unwrap());
 
     if msg_parsed.is_close {
       // TODO: remove disconnected peer and filters/events from him
-      peers.retain(|peer_addr, _| peer_addr != &addr);
+      clients.retain(|client| client.subscription_id != msg_parsed.data.close.subscription_id);
       return future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
     }
 
-    if msg_parsed.is_filter {
+    if msg_parsed.is_request {
       // TODO: return to this peer all events in memory that match this filter.
+
+      // we need to do this because on the first time a client connects, it will send a `REQUEST` message
+      // and we won't have it in our `clients` array yet.
+      match clients
+        .iter_mut()
+        .find(|client| client.socket_addr == addr)
+      {
+        Some(client) => client.filter = msg_parsed.data.request.filter,
+        None => clients.push(ClientConnectionInfo {
+          subscription_id: msg_parsed.data.request.subscription_id,
+          tx: tx.clone(),
+          socket_addr: addr,
+          events: Vec::new(),
+          filter: msg_parsed.data.request.filter,
+        }),
+      }
     }
 
     if msg_parsed.is_event {
       // TODO: verify event against all saved filters and send it to matched ones
+
+      // when an event message is received, it's because we are already connected to the client and, therefore,
+      // we have its data stored in `clients`, so no need to verify if he exists
+      clients
+        .iter_mut()
+        .find(|client| client.socket_addr == addr)
+        .map(|client| client.events.push(msg_parsed.data.event.event));
     }
 
     // We want to broadcast the message to everyone except ourselves.
-    let broadcast_recipients = peers
+    let broadcast_recipients = clients
       .iter()
-      .filter(|(peer_addr, _)| peer_addr != &&addr)
-      .map(|(_, ws_sink)| ws_sink);
+      .filter(|client| client.socket_addr != addr)
+      .map(|client| &client.tx);
 
     for recp in broadcast_recipients {
       recp
         .unbounded_send(tokio_tungstenite::tungstenite::Message::Text(format!(
-          "Number of events: {}\nNumber of filters: {}\n\n",
-          mutable_events.len(),
-          mutable_filters.len(),
+          "Number of clients: {}\n",
+          clients.len()
         )))
         .unwrap();
     }
@@ -146,12 +174,10 @@ async fn handle_connection(
   future::select(broadcast_incoming, receive_from_others).await;
 
   println!("{} disconnected", &addr);
-  peer_map.lock().unwrap().remove(&addr);
-}
-
-struct PeerMapAndSubscriptionID {
-  peer: PeerMap,
-  subscription_id: String,
+  client_connection_info
+    .lock()
+    .unwrap()
+    .retain(|client| client.socket_addr != addr);
 }
 
 #[tokio::main]
@@ -191,9 +217,7 @@ pub async fn initiate_relay() -> Result<(), IoError> {
     .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
   // thread-safe and lockable
-  let events = Arc::new(Mutex::new(Vec::<ClientToRelayCommEvent>::new()));
-  let filters = Arc::new(Mutex::new(Vec::<ClientToRelayCommRequest>::new()));
-  let state = PeerMap::new(Mutex::new(HashMap::new()));
+  let client_connection_info = Arc::new(Mutex::new(Vec::<ClientConnectionInfo>::new()));
 
   // Create the event loop and TCP listener we'll accept connections on.
   let try_socket = TcpListener::bind(&addr).await;
@@ -206,12 +230,9 @@ pub async fn initiate_relay() -> Result<(), IoError> {
 
     // Clone the states we want to be able to mutate
     // throughout different threads
-    let events = Arc::clone(&events);
-    let filters = Arc::clone(&filters);
-    let state = Arc::clone(&state);
+    let client_connection_info = Arc::clone(&client_connection_info);
 
     // Spawn the handler to run async
-    println!("New connection attempt!!!\n\n\n");
-    tokio::spawn(handle_connection(state, stream, addr, events, filters));
+    tokio::spawn(handle_connection(stream, addr, client_connection_info));
   }
 }

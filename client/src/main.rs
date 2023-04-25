@@ -81,9 +81,9 @@ pub async fn handle_connection(connect_addr: String, subscriptions_ids: Arc<Mute
           let data = msg.into_data();
           tokio::io::stdout().write_all(&data).await.unwrap();
         }
-        Err(_err) => {
-          eprintln!("Connection closed");
-          return ();
+        Err(err) => {
+          eprintln!("Error: {}", err);
+          return;
         }
       }
     })
