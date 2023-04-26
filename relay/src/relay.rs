@@ -29,19 +29,75 @@ struct ClientConnectionInfo {
   filter: Filter,
 }
 
-#[derive(Default)]
-struct AnyConnection {
+#[derive(Default, Clone)]
+struct AnyCommunicationFromClient {
   close: ClientToRelayCommClose,
   event: ClientToRelayCommEvent,
   request: ClientToRelayCommRequest,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct MsgResult {
+  no_op: bool,
   is_close: bool,
   is_event: bool,
   is_request: bool,
-  data: AnyConnection,
+  data: AnyCommunicationFromClient,
+}
+
+fn on_close_message(
+  msg_parsed: MsgResult,
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
+  addr: SocketAddr,
+) -> bool {
+  let client_idx_with_addr_and_subscription_id_exists = clients.iter().position(|client| {
+    client.subscription_id == msg_parsed.data.close.subscription_id && client.socket_addr == addr
+  });
+  match client_idx_with_addr_and_subscription_id_exists {
+    Some(client_index) => {
+      clients.remove(client_index);
+      return true;
+    }
+    None => return false,
+  }
+}
+
+fn on_request_message(
+  msg_parsed: MsgResult,
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
+  addr: SocketAddr,
+  tx: UnboundedSender<Message>,
+) {
+  // TODO: return to this peer all events in memory that match this filter
+  //       (all conditions of the filter are treated as && conditions)
+
+  // we need to do this because on the first time a client connects, it will send a `REQUEST` message
+  // and we won't have it in our `clients` array yet.
+  match clients.iter_mut().find(|client| client.socket_addr == addr) {
+    Some(client) => client.filter = msg_parsed.data.request.filter,
+    None => clients.push(ClientConnectionInfo {
+      subscription_id: msg_parsed.data.request.subscription_id,
+      tx: tx.clone(),
+      socket_addr: addr,
+      events: Vec::new(),
+      filter: msg_parsed.data.request.filter,
+    }),
+  };
+}
+
+fn on_event_message(
+  msg_parsed: MsgResult,
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
+  addr: SocketAddr,
+) {
+  // TODO: verify event against all saved filters and send it to matched ones
+
+  // when an event message is received, it's because we are already connected to the client and, therefore,
+  // we have its data stored in `clients`, so no need to verify if he exists
+  clients
+    .iter_mut()
+    .find(|client| client.socket_addr == addr)
+    .map(|client| client.events.push(msg_parsed.data.event.event));
 }
 
 /*
@@ -77,7 +133,8 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     return result;
   }
 
-  unreachable!();
+  result.no_op = true;
+  result
 }
 
 async fn handle_connection(
@@ -113,42 +170,26 @@ async fn handle_connection(
 
     let msg_parsed = parse_message_received_from_client(msg.to_text().unwrap());
 
+    if msg_parsed.no_op {
+      return future::ok(());
+    }
+
     if msg_parsed.is_close {
-      // TODO: remove disconnected peer and filters/events from him
-      clients.retain(|client| client.subscription_id != msg_parsed.data.close.subscription_id);
-      return future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+      return if on_close_message(msg_parsed, &mut clients, addr) == true {
+        future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed)
+      } else {
+        future::ok(())
+      };
     }
 
     if msg_parsed.is_request {
-      // TODO: return to this peer all events in memory that match this filter.
-
-      // we need to do this because on the first time a client connects, it will send a `REQUEST` message
-      // and we won't have it in our `clients` array yet.
-      match clients
-        .iter_mut()
-        .find(|client| client.socket_addr == addr)
-      {
-        Some(client) => client.filter = msg_parsed.data.request.filter,
-        None => clients.push(ClientConnectionInfo {
-          subscription_id: msg_parsed.data.request.subscription_id,
-          tx: tx.clone(),
-          socket_addr: addr,
-          events: Vec::new(),
-          filter: msg_parsed.data.request.filter,
-        }),
-      }
+      on_request_message(msg_parsed.clone(), &mut clients, addr, tx.clone());
     }
-
+    
     if msg_parsed.is_event {
-      // TODO: verify event against all saved filters and send it to matched ones
-
-      // when an event message is received, it's because we are already connected to the client and, therefore,
-      // we have its data stored in `clients`, so no need to verify if he exists
-      clients
-        .iter_mut()
-        .find(|client| client.socket_addr == addr)
-        .map(|client| client.events.push(msg_parsed.data.event.event));
+      on_event_message(msg_parsed, &mut clients, addr);
     }
+
 
     // We want to broadcast the message to everyone except ourselves.
     let broadcast_recipients = clients

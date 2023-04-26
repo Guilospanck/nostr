@@ -2,10 +2,10 @@
 
 ## TODO
 
-- [ ] Change `unreachable()` at line 80 of `relay.rs`. Whenever someone sends something that cannot be parsed as EVENT, REQUEST or CLOSE, it breaks
-- [ ] Fix `close` message closing the connection even with different id
-- [ ] Verify `PoisonError` when client closes connection with Ctrl C
-- [ ] Should not allow a client to close the connection of another client (`subscription_id`)
+- [x] Change `unreachable()` at line 80 of `relay.rs`. Whenever someone sends something that cannot be parsed as EVENT, REQUEST or CLOSE, it breaks
+- [x] Fix `close` message closing the connection even with different id
+- [?] Verify `PoisonError` when client closes connection with Ctrl C
+- [x] Should not allow a client to close the connection of another client (`subscription_id`)
 - [ ] Improve error and normal functioning logging
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)
 - [ ] Implement `optional` NIPs
@@ -31,7 +31,7 @@ cargo run
 ```
 
 Client will try to connect automatically to the following addresses (therefore, don't change your `relay` right now
-to a different address :P or then change the `client` implementation to read from args):
+to a different address other than `127.0.0.1:8080` or `127.0.0.1:8081` :P or then change the `client` implementation to read from args):
 
 ```rs
 pub const LIST_OF_RELAYS: [&str; 2] = ["ws://127.0.0.1:8080/", "ws://127.0.0.1:8081/"];

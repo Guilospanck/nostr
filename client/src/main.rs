@@ -1,15 +1,3 @@
-//! A simple example of hooking up stdin/stdout to a WebSocket stream.
-//!
-//! This example will connect to a server specified in the argument list and
-//! then forward all data read on stdin to the server, printing out all data
-//! received on stdout.
-//!
-//! Note that this is not currently optimized for performance, especially around
-//! buffer management. Rather it's intended to show an example of working with a
-//! client.
-//!
-//! You can use this example together with the `server` example.
-
 use std::{
   collections::HashMap,
   sync::{Arc, Mutex},
@@ -59,11 +47,11 @@ async fn main() {
 pub async fn handle_connection(connect_addr: String, subscriptions_ids: Arc<Mutex<Vec<String>>>) {
   let url = url::Url::parse(&connect_addr).unwrap();
 
-  let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-  tokio::spawn(read_stdin(stdin_tx.clone()));
-
   let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
   println!("WebSocket handshake has been successfully completed");
+
+  let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
+  tokio::spawn(read_stdin(stdin_tx.clone()));
 
   // send initial message
   send_initial_message(stdin_tx, subscriptions_ids).await;
