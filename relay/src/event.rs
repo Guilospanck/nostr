@@ -31,30 +31,6 @@ impl EventTags {
 ///
 pub type Tag = [String; 3];
 
-#[derive(Debug, Deserialize, Serialize, Default, Clone)]
-pub struct Tags(Vec<Tag>);
-
-impl std::fmt::Display for Tags {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(f, "[")?;
-    for (idx, tag) in self.0.iter().enumerate() {
-      write!(f, "[")?;
-      for (pos, v) in tag.iter().enumerate() {
-        write!(f, "\"{}\"", v)?;
-        if pos < tag.len() - 1 {
-          write!(f, ",")?;
-        }
-      }
-      write!(f, "]")?;
-      if idx < self.0.len() - 1 {
-        write!(f, ",")?;
-      }
-    }
-    write!(f, "]")?;
-    Ok(())
-  }
-}
-
 pub enum EventKinds {
   Metadata = 0,
   Text = 1,
@@ -90,15 +66,15 @@ pub enum EventKinds {
 ///   }
 ///   ```
 ///
-#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone, PartialEq, Eq)]
 pub struct Event {
-  id: String,      // 32-bytes SHA256 of the serialized event data
-  pubkey: String,  // 32-bytes hex-encoded public key of the event creator
-  created_at: u64, // unix timestamp in seconds
-  kind: u64,       // kind of event
-  tags: Tags,
-  content: String, // arbitrary string
-  sig: String,     // 64-bytes hex signature of the id field
+  pub id: String,      // 32-bytes SHA256 of the serialized event data
+  pub pubkey: String,  // 32-bytes hex-encoded public key of the event creator
+  pub created_at: u64, // unix timestamp in seconds
+  pub kind: u64,       // kind of event
+  pub tags: Vec<Tag>,
+  pub content: String, // arbitrary string
+  pub sig: String,     // 64-bytes hex signature of the id field
 }
 
 impl Event {
@@ -107,7 +83,7 @@ impl Event {
   ///
   fn get_id(&self) -> String {
     let data = format!(
-      "[{},\"{}\",{},{},{},\"{}\"]",
+      "[{},\"{}\",{},{},{:?},\"{}\"]",
       0, self.pubkey, self.created_at, self.kind, self.tags, self.content
     );
 

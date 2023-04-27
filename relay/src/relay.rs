@@ -1,5 +1,7 @@
 use std::{
+  collections::HashMap,
   env,
+  fmt::format,
   io::Error as IoError,
   net::SocketAddr,
   sync::{Arc, Mutex, MutexGuard},
@@ -45,6 +47,12 @@ struct MsgResult {
   data: AnyCommunicationFromClient,
 }
 
+#[derive(Debug)]
+struct OutboundInfo {
+  tx: Tx,
+  content: String,
+}
+
 fn on_close_message(
   msg_parsed: MsgResult,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
@@ -74,7 +82,7 @@ fn on_request_message(
   // we need to do this because on the first time a client connects, it will send a `REQUEST` message
   // and we won't have it in our `clients` array yet.
   match clients.iter_mut().find(|client| client.socket_addr == addr) {
-    Some(client) => client.filter = msg_parsed.data.request.filter,
+    Some(client) => client.filter = msg_parsed.data.request.filter, // update filter
     None => clients.push(ClientConnectionInfo {
       subscription_id: msg_parsed.data.request.subscription_id,
       tx: tx.clone(),
@@ -85,19 +93,122 @@ fn on_request_message(
   };
 }
 
+fn check_filter_match_event(event: Event, filter: Filter) -> bool {
+  let mut is_match = true;
+
+  // Check IDs
+  if let Some(ids) = filter.ids {
+    let id_in_list = ids
+      .iter()
+      .any(|id| *id == event.id || id.contains(&event.id));
+    if !id_in_list {
+      return false;
+    }
+  }
+
+  // Check Authors
+  if let Some(authors) = filter.authors {
+    let author_in_list = authors
+      .iter()
+      .any(|author| *author == event.pubkey || author.contains(&event.pubkey));
+    if !author_in_list {
+      return false;
+    }
+  }
+
+  // Check Kinds
+  if let Some(kinds) = filter.kinds {
+    let kind_in_list = kinds.iter().any(|kind| *kind == event.kind);
+    if !kind_in_list {
+      return false;
+    }
+  }
+
+  // Check Since
+  if let Some(since) = filter.since {
+    let event_after_since = since <= event.created_at;
+    if !event_after_since {
+      return false;
+    }
+  }
+
+  // Check Until
+  if let Some(until) = filter.until {
+    let event_before_until = until >= event.created_at;
+    if !event_before_until {
+      return false;
+    }
+  }
+
+  // Check Tags
+  if let Some(tags) = filter.tags {
+    for tag in tags // { "e": ["event_id1", "event_id2", "..."], "p": ["pubkey_1", "pubkey_2", "..."] }
+      .iter()
+    {
+      // tag = ( "e", ["event_id1", "event_id2", "..."] )
+
+      // Check if event has the same tag as the filter is requesting
+      let does_event_have_tag = event
+        .tags
+        .iter()
+        .position(|event_tag| *tag.0 == event_tag[0]);
+
+      match does_event_have_tag {
+        Some(index) => {
+          let does_event_id_is_referenced = tag
+            .1
+            .iter()
+            .any(|event_id| *event_id == event.tags[index][1]);
+
+          if !does_event_id_is_referenced {
+            is_match = false;
+          }
+        }
+        None => is_match = false, // if a filter requires a tag and the event doesn't have it, it's not a match
+      }
+    }
+  }
+
+  is_match
+}
+
 fn on_event_message(
   msg_parsed: MsgResult,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
   addr: SocketAddr,
 ) {
-  // TODO: verify event against all saved filters and send it to matched ones
+  let mut message_to_send_to_client: Vec<OutboundInfo> = vec![];
 
   // when an event message is received, it's because we are already connected to the client and, therefore,
   // we have its data stored in `clients`, so no need to verify if he exists
-  clients
-    .iter_mut()
-    .find(|client| client.socket_addr == addr)
-    .map(|client| client.events.push(msg_parsed.data.event.event));
+  for client in clients.iter_mut() {
+    let event: Event = msg_parsed.data.event.event.clone();
+    let filter: Filter = client.filter.clone();
+
+    if client.socket_addr == addr {
+      client.events.push(event.clone());
+    }
+
+    // Check filter
+    if check_filter_match_event(event.clone(), filter) {
+      println!("NEW MATCHED FILTER => {:?}", client.socket_addr);
+      message_to_send_to_client.push(OutboundInfo {
+        tx: client.tx.clone(),
+        content: event.content,
+      });
+    }
+  }
+
+  // We want to broadcast the message to everyone that matches the filter.
+  for recp in message_to_send_to_client {
+    recp
+      .tx
+      .unbounded_send(tokio_tungstenite::tungstenite::Message::Text(format!(
+        "{}",
+        recp.content,
+      )))
+      .unwrap();
+  }
 }
 
 /*
@@ -185,25 +296,9 @@ async fn handle_connection(
     if msg_parsed.is_request {
       on_request_message(msg_parsed.clone(), &mut clients, addr, tx.clone());
     }
-    
+
     if msg_parsed.is_event {
       on_event_message(msg_parsed, &mut clients, addr);
-    }
-
-
-    // We want to broadcast the message to everyone except ourselves.
-    let broadcast_recipients = clients
-      .iter()
-      .filter(|client| client.socket_addr != addr)
-      .map(|client| &client.tx);
-
-    for recp in broadcast_recipients {
-      recp
-        .unbounded_send(tokio_tungstenite::tungstenite::Message::Text(format!(
-          "Number of clients: {}\n",
-          clients.len()
-        )))
-        .unwrap();
     }
 
     future::ok(())

@@ -23,13 +23,13 @@ use serde::{Deserialize, Serialize};
 /// - until: a timestamp. Events must be older than this to pass
 /// - limit: maximum number of events to be returned in the initial query (it can be ignored afterwards)
 ///
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct Filter {
-  ids: Option<Vec<String>>,
-  authors: Option<Vec<String>>,
-  kinds: Option<Vec<u64>>,
-  tags: Option<HashMap<String, Vec<String>>>,
-  since: Option<String>,
-  until: Option<String>,
-  limit: Option<u64>,
+  pub ids: Option<Vec<String>>,
+  pub authors: Option<Vec<String>>,
+  pub kinds: Option<Vec<u64>>,
+  pub tags: Option<HashMap<String, Vec<String>>>,
+  pub since: Option<u64>,
+  pub until: Option<u64>,
+  pub limit: Option<u64>,
 }

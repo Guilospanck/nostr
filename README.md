@@ -4,8 +4,11 @@
 
 - [x] Change `unreachable()` at line 80 of `relay.rs`. Whenever someone sends something that cannot be parsed as EVENT, REQUEST or CLOSE, it breaks
 - [x] Fix `close` message closing the connection even with different id
-- [?] Verify `PoisonError` when client closes connection with Ctrl C
+- [ ? ] Verify `PoisonError` when client closes connection with Ctrl C
 - [x] Should not allow a client to close the connection of another client (`subscription_id`)
+- [ ] Fix relay line 203 and above not sending message to matched filters
+- [ ] Add received `event` message to the struct of the `ClientConnectionInfo`
+- [ ] Use `limit` from filter on first request of events
 - [ ] Improve error and normal functioning logging
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)
 - [ ] Implement `optional` NIPs
