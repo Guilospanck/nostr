@@ -100,8 +100,6 @@ fn generate_keys() -> (SecretKey, PublicKey) {
   (seckey, pubkey)
 }
 
-fn main() {}
-
 #[cfg(test)]
 mod tests {
   use bitcoin_hashes::hex::ToHex;
