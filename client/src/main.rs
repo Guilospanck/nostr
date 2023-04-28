@@ -66,8 +66,7 @@ pub async fn handle_connection(connect_addr: String, subscriptions_ids: Arc<Mute
     read.for_each(|message| async {
       match message {
         Ok(msg) => {
-          let data = msg.into_data();
-          tokio::io::stdout().write_all(&data).await.unwrap();
+          println!("Received message from relay: {:?}", msg.to_string());
         }
         Err(err) => {
           eprintln!("Error: {}", err);
