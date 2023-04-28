@@ -7,7 +7,10 @@
 - [ ? ] Verify `PoisonError` when client closes connection with Ctrl C
 - [x] Should not allow a client to close the connection of another client (`subscription_id`)
 - [x] Fix relay line 203 and above not sending message to matched filters
-- [ ] Add received `event` message to the struct of the `ClientConnectionInfo`
+- [x] Add received `event` message to the struct of the `ClientConnectionInfo`
+- [ ] Create a way of storing also the pubkeys of clients
+- [ ] Filters must be related to the `subscription_id` because we need to have a way of deleting them when `CLOSE` message is sent.
+- [ ] Should save all events (disconnected clients) in another structure because in the case a client disconnects from the relay, we won't have `ClientConnectionInfo` anymore (because the client is not connected anymore) and, therefore, if we want to preserve the events and send to someone else afterwards, we will need to have this info, otherwise it will be lost. (**Depends on having the public key of the client before**)
 - [ ] Use `limit` from filter on first request of events
 - [ ] Improve error and normal functioning logging
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)

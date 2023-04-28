@@ -52,46 +52,6 @@ struct OutboundInfo {
   content: String,
 }
 
-fn on_close_message(
-  msg_parsed: MsgResult,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-  addr: SocketAddr,
-) -> bool {
-  let client_idx_with_addr_and_subscription_id_exists = clients.iter().position(|client| {
-    client.subscription_id == msg_parsed.data.close.subscription_id && client.socket_addr == addr
-  });
-  match client_idx_with_addr_and_subscription_id_exists {
-    Some(client_index) => {
-      clients.remove(client_index);
-      return true;
-    }
-    None => return false,
-  }
-}
-
-fn on_request_message(
-  msg_parsed: MsgResult,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-  addr: SocketAddr,
-  tx: UnboundedSender<Message>,
-) {
-  // TODO: return to this peer all events in memory that match this filter
-  //       (all conditions of the filter are treated as && conditions)
-
-  // we need to do this because on the first time a client connects, it will send a `REQUEST` message
-  // and we won't have it in our `clients` array yet.
-  match clients.iter_mut().find(|client| client.socket_addr == addr) {
-    Some(client) => client.filter = msg_parsed.data.request.filter, // update filter
-    None => clients.push(ClientConnectionInfo {
-      subscription_id: msg_parsed.data.request.subscription_id,
-      tx: tx.clone(),
-      socket_addr: addr,
-      events: Vec::new(),
-      filter: msg_parsed.data.request.filter,
-    }),
-  };
-}
-
 fn check_filter_match_event(event: Event, filter: Filter) -> bool {
   let mut is_match = true;
 
@@ -171,43 +131,99 @@ fn check_filter_match_event(event: Event, filter: Filter) -> bool {
   is_match
 }
 
-fn on_event_message(
+fn send_message_to_client(tx: Tx, content: String) {
+  tx.unbounded_send(Message::binary(format!("{}", content).as_bytes()))
+    .unwrap();
+}
+
+fn broadcast_message_to_clients(outbound_client_and_message: Vec<OutboundInfo>) {
+  for recp in outbound_client_and_message {
+    send_message_to_client(recp.tx.clone(), recp.content.clone());
+  }
+}
+
+// TODO: this function should only be used to stop subscriptions. In other words: remove the filter with this subscription id (filters must be related to the subscriptio id)
+fn on_close_message(
   msg_parsed: MsgResult,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
   addr: SocketAddr,
+) -> bool {
+  let client_idx_with_addr_and_subscription_id_exists = clients.iter().position(|client| {
+    client.subscription_id == msg_parsed.data.close.subscription_id && client.socket_addr == addr
+  });
+  match client_idx_with_addr_and_subscription_id_exists {
+    Some(client_index) => {
+      clients.remove(client_index);
+      return true;
+    }
+    None => return false,
+  }
+}
+
+fn on_request_message(
+  msg_parsed: MsgResult,
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
+  addr: SocketAddr,
+  tx: UnboundedSender<Message>,
 ) {
-  let mut message_to_send_to_client: Vec<OutboundInfo> = vec![];
+  // we need to do this because on the first time a client connects, it will send a `REQUEST` message
+  // and we won't have it in our `clients` array yet.
+  match clients.iter_mut().find(|client| client.socket_addr == addr) {
+    Some(client) => client.filter = msg_parsed.data.request.filter.clone(), // update filter
+    None => clients.push(ClientConnectionInfo {
+      subscription_id: msg_parsed.data.request.subscription_id,
+      tx: tx.clone(),
+      socket_addr: addr,
+      events: Vec::new(),
+      filter: msg_parsed.data.request.filter.clone(),
+    }),
+  };
+
+  // Check all events from the database that match the requested filter
+  let mut events_to_send_to_client_that_match_the_requested_filter: Vec<Event> = vec![];
+  clients.iter().for_each(|client| {
+    client.events.iter().for_each(|event| {
+      if check_filter_match_event(event.clone(), msg_parsed.data.request.filter.clone()) {
+        events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
+      }
+    });
+  });
+
+  // Send to client all events matched
+  let events_stringfied = serde_json::to_string(&events_to_send_to_client_that_match_the_requested_filter).unwrap();
+  send_message_to_client(tx, events_stringfied);
+}
+
+fn on_event_message(
+  event: Event,
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
+  addr: SocketAddr,
+) {
+  let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
+  let event_stringfied = serde_json::to_string(&event).unwrap();
 
   // when an `event` message is received, it's because we are already connected to the client and, therefore,
-  // we have its data stored in `clients`, so no need to verify if he exists
+  // we have its data stored in `clients`, so NO need to verify if he exists
   for client in clients.iter_mut() {
-    let event: Event = msg_parsed.data.event.event.clone();
+    let event: Event = event.clone();
     let filter: Filter = client.filter.clone();
 
-    if client.socket_addr == addr {
+    // update the client's event array if this array doesn't already exist
+    if client.socket_addr == addr && !client.events.iter().any(|event| event.id == event.id) {
       client.events.push(event.clone());
     }
 
     // Check filter
     if check_filter_match_event(event.clone(), filter) {
-      println!("NEW MATCHED FILTER => {:?}", client.socket_addr);
-      message_to_send_to_client.push(OutboundInfo {
+      outbound_client_and_message.push(OutboundInfo {
         tx: client.tx.clone(),
-        content: event.content,
+        content: event_stringfied.clone(),
       });
     }
   }
 
-  println!();
-  println!("{:?}\n", message_to_send_to_client);
-
   // We want to broadcast the message to everyone that matches the filter.
-  for recp in message_to_send_to_client {
-    recp
-      .tx
-      .unbounded_send(Message::binary(format!("{}", recp.content,).as_bytes()))
-      .unwrap();
-  }
+  broadcast_message_to_clients(outbound_client_and_message);
 }
 
 /*
@@ -247,11 +263,12 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
   result
 }
 
+/// This function is called when the connection relay-client is closed.
 fn connection_cleanup(
   client_connection_info: Arc<Mutex<Vec<ClientConnectionInfo>>>,
   addr: SocketAddr,
 ) {
-  println!("{} disconnected", &addr);
+  println!("Client with address {} disconnected", &addr);
   client_connection_info
     .lock()
     .unwrap()
@@ -302,7 +319,7 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_event {
-      on_event_message(msg_parsed, &mut clients, addr);
+      on_event_message(msg_parsed.data.event.event, &mut clients, addr);
     }
 
     future::ok(())
