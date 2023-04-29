@@ -152,22 +152,27 @@ fn broadcast_message_to_clients(outbound_client_and_message: Vec<OutboundInfo>) 
   }
 }
 
-// TODO: this function should only be used to stop subscriptions. In other words: remove the filter with this subscription id (filters must be related to the subscriptio id)
 fn on_close_message(
   msg_parsed: MsgResult,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
   addr: SocketAddr,
-) -> bool {
-  let client_idx_with_addr_and_subscription_id_exists = clients.iter().position(|client| {
-    client.subscription_id == msg_parsed.data.close.subscription_id && client.socket_addr == addr
-  });
-  match client_idx_with_addr_and_subscription_id_exists {
-    Some(client_index) => {
-      clients.remove(client_index);
-      return true;
+) {
+  match clients.iter().position(|client| client.socket_addr == addr) {
+    Some(client_idx) => {
+      // Client can only close the subscription of its own connection
+      match clients[client_idx]
+        .requests
+        .iter()
+        .position(|client_req| client_req.subscription_id == msg_parsed.data.close.subscription_id)
+      {
+        Some(client_req_index) => {
+          clients[client_idx].requests.remove(client_req_index);
+        }
+        None => (),
+      }
     }
-    None => return false,
-  }
+    None => (),
+  };
 }
 
 fn on_request_message(
@@ -211,7 +216,7 @@ fn on_request_message(
   clients.iter().for_each(|client| {
     client.events.iter().for_each(|event| {
       msg_parsed.data.request.filters.iter().for_each(|filter| {
-        if check_filter_match_event(event.clone(), *filter) {
+        if check_filter_match_event(event.clone(), filter.clone()) {
           events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
         }
       })
@@ -235,21 +240,22 @@ fn on_event_message(
   // when an `event` message is received, it's because we are already connected to the client and, therefore,
   // we have its data stored in `clients`, so NO need to verify if he exists
   for client in clients.iter_mut() {
-    let event: Event = event.clone();
-    let filter: Filter = client.filter.clone();
-
     // update the client's event array if this array doesn't already exist
-    if client.socket_addr == addr && !client.events.iter().any(|event| event.id == event.id) {
+    if client.socket_addr == addr && !client.events.iter().any(|evt| evt.id == event.id) {
       client.events.push(event.clone());
     }
 
-    // Check filter
-    if check_filter_match_event(event.clone(), filter) {
-      outbound_client_and_message.push(OutboundInfo {
-        tx: client.tx.clone(),
-        content: event_stringfied.clone(),
+    // Check filters
+    client.requests.iter().for_each(|client_req| {
+      client_req.filters.iter().for_each(|filter| {
+        if check_filter_match_event(event.clone(), filter.clone()) {
+          outbound_client_and_message.push(OutboundInfo {
+            tx: client.tx.clone(),
+            content: event_stringfied.clone(),
+          });
+        }
       });
-    }
+    });
   }
 
   // We want to broadcast the message to everyone that matches the filter.
@@ -337,11 +343,7 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_close {
-      return if on_close_message(msg_parsed, &mut clients, addr) == true {
-        future::err(tokio_tungstenite::tungstenite::Error::ConnectionClosed)
-      } else {
-        future::ok(())
-      };
+      on_close_message(msg_parsed.clone(), &mut clients, addr);
     }
 
     if msg_parsed.is_request {
