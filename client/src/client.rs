@@ -7,78 +7,26 @@ use futures_util::{
   future::{self, join_all},
   pin_mut, StreamExt,
 };
-use tokio::io::{AsyncReadExt};
+use tokio::io::AsyncReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::db::{Keys, get_client_keys};
+
 #[derive(Debug, Serialize, Default, Deserialize)]
-pub struct Filter {
+struct Filter {
   pub ids: Option<Vec<String>>,
   pub authors: Option<Vec<String>>,
   pub kinds: Option<Vec<u64>>,
   pub tags: Option<HashMap<String, Vec<String>>>,
-  pub since: Option<String>,
-  pub until: Option<String>,
+  pub since: Option<u64>,
+  pub until: Option<u64>,
   pub limit: Option<u64>,
 }
 
-pub const LIST_OF_RELAYS: [&str; 2] = ["ws://127.0.0.1:8080/", "ws://127.0.0.1:8081/"];
-
-#[tokio::main]
-pub async fn initiate_client() {
-  let subscriptions_ids = Arc::new(Mutex::new(Vec::<String>::new()));
-
-  let connections: Vec<_> = LIST_OF_RELAYS
-    .into_iter()
-    .map(|addr| {
-      println!("Connecting to relay {:?}...", addr);
-      tokio::spawn(handle_connection(
-        addr.to_string(),
-        subscriptions_ids.clone(),
-      ))
-    })
-    .collect();
-
-  join_all(connections).await;
-}
-
-pub async fn handle_connection(connect_addr: String, subscriptions_ids: Arc<Mutex<Vec<String>>>) {
-  let url = url::Url::parse(&connect_addr).unwrap();
-
-  let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-  println!("WebSocket handshake has been successfully completed");
-
-  let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-  tokio::spawn(read_stdin(stdin_tx.clone()));
-
-  // send initial message
-  send_initial_message(stdin_tx, subscriptions_ids).await;
-
-  let (write, read) = ws_stream.split();
-
-  let stdin_to_ws = stdin_rx.map(Ok).forward(write);
-
-  // This will print to stdout whatever the WS sends
-  // (The WS is forwarding messages from other clients)
-  let ws_to_stdout = {
-    read.for_each(|message| async {
-      match message {
-        Ok(msg) => {
-          println!("Received message from relay: {:?}", msg.to_string());
-        }
-        Err(err) => {
-          eprintln!("Error: {}", err);
-          return;
-        }
-      }
-    })
-  };
-
-  pin_mut!(stdin_to_ws, ws_to_stdout);
-  future::select(stdin_to_ws, ws_to_stdout).await;
-}
+const LIST_OF_RELAYS: [&str; 2] = ["ws://127.0.0.1:8080/", "ws://127.0.0.1:8081/"];
 
 // Our helper method which will read data from stdin and send it along the
 // sender provided.
@@ -130,4 +78,67 @@ async fn send_initial_message(
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes()))
     .unwrap();
+}
+
+async fn handle_connection(
+  connect_addr: String,
+  subscriptions_ids: Arc<Mutex<Vec<String>>>,
+  keys: Keys,
+) {
+  println!("{:?}", keys);
+  let url = url::Url::parse(&connect_addr).unwrap();
+
+  let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+  println!("WebSocket handshake has been successfully completed");
+
+  let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
+  tokio::spawn(read_stdin(stdin_tx.clone()));
+
+  // send initial message
+  send_initial_message(stdin_tx, subscriptions_ids).await;
+
+  let (write, read) = ws_stream.split();
+
+  let stdin_to_ws = stdin_rx.map(Ok).forward(write);
+
+  // This will print to stdout whatever the WS sends
+  // (The WS is forwarding messages from other clients)
+  let ws_to_stdout = {
+    read.for_each(|message| async {
+      match message {
+        Ok(msg) => {
+          println!("Received message from relay: {:?}", msg.to_string());
+        }
+        Err(err) => {
+          eprintln!("Error: {}", err);
+          return;
+        }
+      }
+    })
+  };
+
+  pin_mut!(stdin_to_ws, ws_to_stdout);
+  future::select(stdin_to_ws, ws_to_stdout).await;
+}
+
+#[tokio::main]
+pub async fn initiate_client() -> Result<(), redb::Error> {
+  let keys = get_client_keys()?;
+  let subscriptions_ids = Arc::new(Mutex::new(Vec::<String>::new()));
+
+  let connections: Vec<_> = LIST_OF_RELAYS
+    .into_iter()
+    .map(|addr| {
+      println!("Connecting to relay {:?}...", addr);
+      tokio::spawn(handle_connection(
+        addr.to_string(),
+        subscriptions_ids.clone(),
+        keys.clone(),
+      ))
+    })
+    .collect();
+
+  join_all(connections).await;
+
+  Ok(())
 }
