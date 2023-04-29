@@ -1,0 +1,51 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "rust: cargo build --client",
+      "type": "cargo",
+      "command": "build",
+      "args": ["--manifest-path", "${workspaceRoot}/client/Cargo.toml"],
+      "group": "build",
+      "problemMatcher": [
+        {
+          "owner": "rust",
+          "fileLocation": ["relative", "${workspaceRoot}/client/"],
+          "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+):\\s+(\\d+):(\\d+)\\s+(warning|error):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 5,
+            "severity": 6,
+            "message": 7
+          }
+        }
+      ]
+    },
+    {
+      "label": "rust: cargo build --relay",
+      "type": "cargo",
+      "command": "build",
+      "args": ["--manifest-path", "${workspaceRoot}/relay/Cargo.toml"],
+      "group": "build",
+      "problemMatcher": [
+        {
+          "owner": "rust",
+          "fileLocation": ["relative", "${workspaceRoot}/relay/"],
+          "pattern": {
+            "regexp": "^(.*):(\\d+):(\\d+):\\s+(\\d+):(\\d+)\\s+(warning|error):\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 5,
+            "severity": 6,
+            "message": 7
+          }
+        }
+      ]
+    }
+  ]
+}
