@@ -21,13 +21,23 @@ use crate::{
 
 type Tx = UnboundedSender<Message>;
 
+/// Holds information about the requests made by a client.
+///
+#[derive(Debug)]
+struct ClientRequests {
+  subscription_id: String,
+  filters: Vec<Filter>,
+}
+
+/// Holds information about the clients connection.
+/// A client cannot have more than one connection with the same relay.
+///
 #[derive(Debug)]
 struct ClientConnectionInfo {
-  subscription_id: String,
   tx: Tx,
   socket_addr: SocketAddr,
   events: Vec<Event>,
-  filter: Filter,
+  requests: Vec<ClientRequests>,
 }
 
 #[derive(Default, Clone)]
@@ -59,7 +69,7 @@ fn check_filter_match_event(event: Event, filter: Filter) -> bool {
   if let Some(ids) = filter.ids {
     let id_in_list = ids
       .iter()
-      .any(|id| *id == event.id || id.contains(&event.id));
+      .any(|id| *id == event.id || id.starts_with(&event.id));
     if !id_in_list {
       return false;
     }
@@ -69,7 +79,7 @@ fn check_filter_match_event(event: Event, filter: Filter) -> bool {
   if let Some(authors) = filter.authors {
     let author_in_list = authors
       .iter()
-      .any(|author| *author == event.pubkey || author.contains(&event.pubkey));
+      .any(|author| *author == event.pubkey || author.starts_with(&event.pubkey));
     if !author_in_list {
       return false;
     }
@@ -114,12 +124,12 @@ fn check_filter_match_event(event: Event, filter: Filter) -> bool {
 
       match does_event_have_tag {
         Some(index) => {
-          let does_event_id_is_referenced = tag
+          let is_event_id_referenced_in_requested_filter_tag = tag
             .1
             .iter()
             .any(|event_id| *event_id == event.tags[index][1]);
 
-          if !does_event_id_is_referenced {
+          if !is_event_id_referenced_in_requested_filter_tag {
             is_match = false;
           }
         }
@@ -169,13 +179,30 @@ fn on_request_message(
   // we need to do this because on the first time a client connects, it will send a `REQUEST` message
   // and we won't have it in our `clients` array yet.
   match clients.iter_mut().find(|client| client.socket_addr == addr) {
-    Some(client) => client.filter = msg_parsed.data.request.filter.clone(), // update filter
+    Some(client) => {
+      // client already exists, so his info should be updated
+      match client
+        .requests
+        .iter_mut()
+        .position(|req| req.subscription_id == msg_parsed.data.request.subscription_id)
+      {
+        Some(index) => client.requests[index].filters = msg_parsed.data.request.filters.clone(), // overwrites filters
+        None => client.requests.push(ClientRequests {
+          // adds new one to the array of requests of this connected client
+          subscription_id: msg_parsed.data.request.subscription_id.clone(),
+          filters: msg_parsed.data.request.filters.clone(),
+        }),
+      };
+    }
     None => clients.push(ClientConnectionInfo {
-      subscription_id: msg_parsed.data.request.subscription_id,
+      // creates a new client connection
       tx: tx.clone(),
       socket_addr: addr,
       events: Vec::new(),
-      filter: msg_parsed.data.request.filter.clone(),
+      requests: vec![ClientRequests {
+        subscription_id: msg_parsed.data.request.subscription_id.clone(),
+        filters: msg_parsed.data.request.filters.clone(),
+      }],
     }),
   };
 
@@ -183,14 +210,17 @@ fn on_request_message(
   let mut events_to_send_to_client_that_match_the_requested_filter: Vec<Event> = vec![];
   clients.iter().for_each(|client| {
     client.events.iter().for_each(|event| {
-      if check_filter_match_event(event.clone(), msg_parsed.data.request.filter.clone()) {
-        events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
-      }
+      msg_parsed.data.request.filters.iter().for_each(|filter| {
+        if check_filter_match_event(event.clone(), *filter) {
+          events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
+        }
+      })
     });
   });
 
   // Send to client all events matched
-  let events_stringfied = serde_json::to_string(&events_to_send_to_client_that_match_the_requested_filter).unwrap();
+  let events_stringfied =
+    serde_json::to_string(&events_to_send_to_client_that_match_the_requested_filter).unwrap();
   send_message_to_client(tx, events_stringfied);
 }
 

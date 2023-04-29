@@ -8,13 +8,19 @@
 - [x] Should not allow a client to close the connection of another client (`subscription_id`)
 - [x] Fix relay line 203 and above not sending message to matched filters
 - [x] Add received `event` message to the struct of the `ClientConnectionInfo`
-- [ ] Create a way of storing also the pubkeys of clients
-- [ ] Filters must be related to the `subscription_id` because we need to have a way of deleting them when `CLOSE` message is sent.
+- [x] Create a way of storing also the pubkeys of clients
+- [x] Filters must be related to the `subscription_id` because we need to have a way of deleting them when `CLOSE` message is sent
+- [x] Client REQ message can have multiple filters
 - [ ] Should save all events (disconnected clients) in another structure because in the case a client disconnects from the relay, we won't have `ClientConnectionInfo` anymore (because the client is not connected anymore) and, therefore, if we want to preserve the events and send to someone else afterwards, we will need to have this info, otherwise it will be lost. (**Depends on having the public key of the client before**)
-- [ ] Use `limit` from filter on first request of events
+- [ ] Use `limit` from filter on first request of events and return the most recent ones up until the number defined by this value
 - [ ] Improve error and normal functioning logging
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)
 - [ ] Implement `optional` NIPs
+
+## Some info to pay attention
+
+- Clients should only open one connection to each relay. Each connection can support an unlimited number of subscriptions (from that client).
+- Request message can have multiple filters.
 
 ## How to run
 

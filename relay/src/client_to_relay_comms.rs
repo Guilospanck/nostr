@@ -42,7 +42,7 @@ pub struct ClientToRelayCommEvent {
 pub struct ClientToRelayCommRequest {
   pub code: String, // "REQ"
   pub subscription_id: String,
-  pub filter: Filter,
+  pub filters: Vec<Filter>,
 }
 
 #[derive(Debug, Default, Deserialize, Clone)]
