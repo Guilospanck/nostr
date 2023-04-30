@@ -22,22 +22,25 @@ impl EventsDB<'_> {
     })
   }
 
-  pub fn begin_write(&self) -> Result<WriteTransaction, redb::Error> {
+  fn begin_write(&self) -> Result<WriteTransaction, redb::Error> {
     Ok(self.db.begin_write()?)
   }
 
-  pub fn commit_txn(&mut self, write_txn: WriteTransaction) -> Result<(), redb::Error> {
+  fn commit_txn(&self, write_txn: WriteTransaction) -> Result<(), redb::Error> {
     Ok(write_txn.commit()?)
   }
 
   pub fn write_to_db(
     &mut self,
-    write_txn: &WriteTransaction,
     k: u64,
     v: &str,
   ) -> Result<(), redb::Error> {
-    let mut table = write_txn.open_table(self.table)?;
-    table.insert(k, v)?;
+    let write_txn = self.begin_write()?;
+    {
+      let mut table = write_txn.open_table(self.table)?;
+      table.insert(k, v)?;
+    }
+    self.commit_txn(write_txn)?;
     Ok(())
   }
 

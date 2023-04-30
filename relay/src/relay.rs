@@ -8,7 +8,6 @@ use std::{
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
-use redb::WriteTransaction;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -231,19 +230,10 @@ fn on_request_message(
 
 fn on_event_message(
   event: Event,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-  events: &mut MutexGuard<Vec<Event>>,
-  write_txn: &WriteTransaction,
-  events_db: &mut EventsDB,
+  event_stringfied: String,
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>
 ) {
   let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
-  let event_stringfied = serde_json::to_string(&event).unwrap();
-
-  // update the events array if this event doesn't already exist
-  if !events.iter().any(|evt| evt.id == event.id) {
-    events.push(event.clone());
-    events_db.write_to_db(write_txn, (events.len() as u64) - 1, &event_stringfied).unwrap();
-  }
 
   // when an `event` message is received, it's because we are already connected to the client and, therefore,
   // we have its data stored in `clients`, so NO need to verify if he exists
@@ -268,7 +258,7 @@ fn on_event_message(
 /*
   Expects a message like:
   let msg = "[\"EVENT\",{\"id\":\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\",\"pubkey\":\"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76\",\"created_at\":1673002822,\"kind\":1,\"tags\":[[\"e\",\"688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6\",\"wss://relay.damus.io\"],[\"p\",\"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76\",\"\"]],\"content\":\"Lorem ipsum dolor sit amet\",\"sig\":\"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c\"}]".to_owned();
-  let msg = "[\"REQ\",\"asdf\",\"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\"]".to_owned();
+  let msg = "[\"REQ\",\"asdf\",[\"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\"]]".to_owned();
   let msg = "[\"CLOSE\",\"asdf\"]".to_owned();
 */
 fn parse_message_received_from_client(msg: &str) -> MsgResult {
@@ -341,7 +331,6 @@ async fn handle_connection(
 
     let mut clients = client_connection_info.lock().unwrap();
     let mut events = events.lock().unwrap();
-    // let events_db = Rc::new(RefCell::new(events_db.lock().unwrap()));
 
     let msg_parsed = parse_message_received_from_client(msg.to_text().unwrap());
 
@@ -358,16 +347,20 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_event {
-      let events_db_locked = events_db.lock().unwrap();
-      let write_txn = events_db_locked.begin_write().unwrap();
-      on_event_message(
-        msg_parsed.data.event.event,
-        &mut clients,
-        &mut events,
-        &write_txn,
-        &mut events_db.lock().unwrap(),
-      );
-      Arc::clone(&events_db).lock().unwrap().commit_txn(write_txn).unwrap();
+      let event = msg_parsed.data.event.event.clone();
+      let event_stringfied = serde_json::to_string(&event).unwrap();
+
+      let mut mutable_events_db = events_db.lock().unwrap();
+
+      // update the events array if this event doesn't already exist
+      if !events.iter().any(|evt| evt.id == event.id) {
+        events.push(event.clone());
+        mutable_events_db
+          .write_to_db((events.len() as u64) - 1, &event_stringfied)
+          .unwrap();
+      }
+
+      on_event_message(event, event_stringfied, &mut clients);
     }
 
     future::ok(())
