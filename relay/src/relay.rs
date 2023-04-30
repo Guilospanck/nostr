@@ -1,13 +1,16 @@
 use std::{
+  cell::RefCell,
   env,
   io::Error as IoError,
   net::SocketAddr,
+  rc::{self, Rc},
   sync::{Arc, Mutex, MutexGuard},
 };
 
 use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
+use redb::WriteTransaction;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
@@ -15,6 +18,7 @@ use crate::{
   client_to_relay_comms::{
     ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest,
   },
+  db::EventsDB,
   event::Event,
   filter::Filter,
 };
@@ -36,7 +40,6 @@ struct ClientRequests {
 struct ClientConnectionInfo {
   tx: Tx,
   socket_addr: SocketAddr,
-  events: Vec<Event>,
   requests: Vec<ClientRequests>,
 }
 
@@ -180,6 +183,7 @@ fn on_request_message(
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
   addr: SocketAddr,
   tx: UnboundedSender<Message>,
+  events: &MutexGuard<Vec<Event>>,
 ) {
   // we need to do this because on the first time a client connects, it will send a `REQUEST` message
   // and we won't have it in our `clients` array yet.
@@ -203,7 +207,6 @@ fn on_request_message(
       // creates a new client connection
       tx: tx.clone(),
       socket_addr: addr,
-      events: Vec::new(),
       requests: vec![ClientRequests {
         subscription_id: msg_parsed.data.request.subscription_id.clone(),
         filters: msg_parsed.data.request.filters.clone(),
@@ -213,14 +216,13 @@ fn on_request_message(
 
   // Check all events from the database that match the requested filter
   let mut events_to_send_to_client_that_match_the_requested_filter: Vec<Event> = vec![];
-  clients.iter().for_each(|client| {
-    client.events.iter().for_each(|event| {
-      msg_parsed.data.request.filters.iter().for_each(|filter| {
-        if check_filter_match_event(event.clone(), filter.clone()) {
-          events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
-        }
-      })
-    });
+
+  events.iter().for_each(|event| {
+    msg_parsed.data.request.filters.iter().for_each(|filter| {
+      if check_filter_match_event(event.clone(), filter.clone()) {
+        events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
+      }
+    })
   });
 
   // Send to client all events matched
@@ -232,19 +234,22 @@ fn on_request_message(
 fn on_event_message(
   event: Event,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-  addr: SocketAddr,
+  events: &mut MutexGuard<Vec<Event>>,
+  write_txn: &WriteTransaction,
+  events_db: &mut MutexGuard<EventsDB>,
 ) {
   let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
   let event_stringfied = serde_json::to_string(&event).unwrap();
 
+  // update the events array if this event doesn't already exist
+  if !events.iter().any(|evt| evt.id == event.id) {
+    events.push(event.clone());
+    events_db.write_to_db(write_txn, (events.len() as u64) - 1, &event_stringfied);
+  }
+
   // when an `event` message is received, it's because we are already connected to the client and, therefore,
   // we have its data stored in `clients`, so NO need to verify if he exists
   for client in clients.iter_mut() {
-    // update the client's event array if this array doesn't already exist
-    if client.socket_addr == addr && !client.events.iter().any(|evt| evt.id == event.id) {
-      client.events.push(event.clone());
-    }
-
     // Check filters
     client.requests.iter().for_each(|client_req| {
       client_req.filters.iter().for_each(|filter| {
@@ -315,6 +320,8 @@ async fn handle_connection(
   raw_stream: TcpStream,
   addr: SocketAddr,
   client_connection_info: Arc<Mutex<Vec<ClientConnectionInfo>>>,
+  events: Arc<Mutex<Vec<Event>>>,
+  events_db: Arc<Mutex<EventsDB<'_>>>,
 ) {
   println!("Incoming TCP connection from: {}", addr);
 
@@ -335,6 +342,8 @@ async fn handle_connection(
     );
 
     let mut clients = client_connection_info.lock().unwrap();
+    let mut events = events.lock().unwrap();
+    let events_db = Rc::new(RefCell::new(events_db.lock().unwrap()));
 
     let msg_parsed = parse_message_received_from_client(msg.to_text().unwrap());
 
@@ -347,11 +356,20 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_request {
-      on_request_message(msg_parsed.clone(), &mut clients, addr, tx.clone());
+      on_request_message(msg_parsed.clone(), &mut clients, addr, tx.clone(), &events);
     }
 
     if msg_parsed.is_event {
-      on_event_message(msg_parsed.data.event.event, &mut clients, addr);
+      let borrowed_events_db = events_db.borrow();
+      let write_txn = borrowed_events_db.begin_write().unwrap();
+      on_event_message(
+        msg_parsed.data.event.event,
+        &mut clients,
+        &mut events,
+        &write_txn,
+        &mut events_db.borrow_mut(),
+      );
+      events_db.borrow_mut().commit_txn(write_txn).unwrap();
     }
 
     future::ok(())
@@ -368,14 +386,26 @@ async fn handle_connection(
   connection_cleanup(client_connection_info, addr);
 }
 
+#[derive(Debug)]
+pub enum MainError {
+  IoError(IoError),
+  RedbError(redb::Error),
+}
+
 #[tokio::main]
-pub async fn initiate_relay() -> Result<(), IoError> {
+pub async fn initiate_relay() -> Result<(), MainError> {
   let addr = env::args()
     .nth(1)
     .unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
+  // Read events from DB
+  let events_db = EventsDB::new().unwrap();
+  let events = events_db.get_all_items().unwrap();
+
   // thread-safe and lockable
   let client_connection_info = Arc::new(Mutex::new(Vec::<ClientConnectionInfo>::new()));
+  let events = Arc::new(Mutex::new(events));
+  let events_db = Arc::new(Mutex::new(events_db));
 
   // Create the event loop and TCP listener we'll accept connections on.
   let try_socket = TcpListener::bind(&addr).await;
@@ -384,13 +414,21 @@ pub async fn initiate_relay() -> Result<(), IoError> {
 
   loop {
     // Asynchronously wait for an inbound TCPStream
-    let (stream, addr) = listener.accept().await?;
+    let (stream, addr) = listener.accept().await.unwrap();
 
     // Clone the states we want to be able to mutate
     // throughout different threads
     let client_connection_info = Arc::clone(&client_connection_info);
+    let events = Arc::clone(&events);
+    let events_db = Arc::clone(&events_db);
 
     // Spawn the handler to run async
-    tokio::spawn(handle_connection(stream, addr, client_connection_info));
+    tokio::spawn(handle_connection(
+      stream,
+      addr,
+      client_connection_info,
+      events,
+      events_db,
+    ));
   }
 }
