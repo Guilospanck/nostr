@@ -10,7 +10,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/relay/target/debug/main",
       "args": [],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/relay",
       "preLaunchTask": "rust: cargo build --relay",
     },
     {
