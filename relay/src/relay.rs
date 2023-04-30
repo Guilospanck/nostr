@@ -1,9 +1,7 @@
 use std::{
-  cell::RefCell,
   env,
   io::Error as IoError,
   net::SocketAddr,
-  rc::{self, Rc},
   sync::{Arc, Mutex, MutexGuard},
 };
 
@@ -236,7 +234,7 @@ fn on_event_message(
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
   events: &mut MutexGuard<Vec<Event>>,
   write_txn: &WriteTransaction,
-  events_db: &mut MutexGuard<EventsDB>,
+  events_db: &mut EventsDB,
 ) {
   let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
   let event_stringfied = serde_json::to_string(&event).unwrap();
@@ -244,7 +242,7 @@ fn on_event_message(
   // update the events array if this event doesn't already exist
   if !events.iter().any(|evt| evt.id == event.id) {
     events.push(event.clone());
-    events_db.write_to_db(write_txn, (events.len() as u64) - 1, &event_stringfied);
+    events_db.write_to_db(write_txn, (events.len() as u64) - 1, &event_stringfied).unwrap();
   }
 
   // when an `event` message is received, it's because we are already connected to the client and, therefore,
@@ -343,7 +341,7 @@ async fn handle_connection(
 
     let mut clients = client_connection_info.lock().unwrap();
     let mut events = events.lock().unwrap();
-    let events_db = Rc::new(RefCell::new(events_db.lock().unwrap()));
+    // let events_db = Rc::new(RefCell::new(events_db.lock().unwrap()));
 
     let msg_parsed = parse_message_received_from_client(msg.to_text().unwrap());
 
@@ -360,16 +358,16 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_event {
-      let borrowed_events_db = events_db.borrow();
-      let write_txn = borrowed_events_db.begin_write().unwrap();
+      let events_db_locked = events_db.lock().unwrap();
+      let write_txn = events_db_locked.begin_write().unwrap();
       on_event_message(
         msg_parsed.data.event.event,
         &mut clients,
         &mut events,
         &write_txn,
-        &mut events_db.borrow_mut(),
+        &mut events_db.lock().unwrap(),
       );
-      events_db.borrow_mut().commit_txn(write_txn).unwrap();
+      Arc::clone(&events_db).lock().unwrap().commit_txn(write_txn).unwrap();
     }
 
     future::ok(())
