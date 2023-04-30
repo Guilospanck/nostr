@@ -13,7 +13,7 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::db::{Keys, get_client_keys};
+use crate::db::{get_client_keys, Keys};
 
 #[derive(Debug, Serialize, Default, Deserialize)]
 struct Filter {
@@ -50,7 +50,7 @@ async fn send_initial_message(
   tx: futures_channel::mpsc::UnboundedSender<Message>,
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
 ) {
-  let filter = Filter {
+  let filters = vec![Filter {
     ids: Some(["05b25af3-4250-4fbf-8ef5-97220858f9ab".to_owned()].to_vec()),
     authors: None,
     kinds: None,
@@ -58,22 +58,22 @@ async fn send_initial_message(
     since: None,
     until: None,
     limit: None,
-  };
+  }];
 
-  let filter_string = serde_json::to_string(&filter).unwrap();
+  let filters_stringfied = serde_json::to_string(&filters).unwrap();
   let subscription_id = Uuid::new_v4().to_string();
 
   let mut subs_id = subscriptions_ids.lock().unwrap();
   subs_id.push(subscription_id.clone());
 
-  // ["REQ","some-random-subs-id",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]
+  // ["REQ","some-random-subs-id",[{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"tags":null,"since":null,"until":null,"limit":null}]]
   // ["EVENT",{"id":"05b25af3-4250-4fbf-8ef5-97220858f9ab","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
-  // ["CLOSE","some-random-subs-id"]
+  // ["CLOSE","95e1c438-133d-428d-a849-a307c2e1a005"]
   let filter_subscription = format!(
     "[\"{}\",\"{}\",{}]",
     String::from("REQ"),
     subscription_id,
-    filter_string
+    filters_stringfied
   );
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes()))
@@ -85,7 +85,6 @@ async fn handle_connection(
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
   keys: Keys,
 ) {
-  println!("{:?}", keys);
   let url = url::Url::parse(&connect_addr).unwrap();
 
   let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
@@ -124,6 +123,8 @@ async fn handle_connection(
 #[tokio::main]
 pub async fn initiate_client() -> Result<(), redb::Error> {
   let keys = get_client_keys()?;
+  println!("{:?}", keys);
+
   let subscriptions_ids = Arc::new(Mutex::new(Vec::<String>::new()));
 
   let connections: Vec<_> = LIST_OF_RELAYS
