@@ -12,7 +12,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 use crate::{
-  client_to_relay_comms::{
+  client_to_relay_comm::{
     ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest,
   },
   db::EventsDB,

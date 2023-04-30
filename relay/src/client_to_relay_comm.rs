@@ -5,16 +5,13 @@ use crate::filter::Filter;
 
 /// The three types of `client -> relay` communications.
 /// 
-///  [["EVENT", event_JSON]] -> used to publish events
+///  - `["EVENT", event_JSON]`: used to publish events
 /// 
-///  [["REQ", subscription_id, filters_JSON]] -> used to request events and subscribe to new updates
+///  - `["REQ", subscription_id, filters_JSON]`: used to request events and subscribe to new updates.
+///       A REQ message may contain multiple filters. In this case, events that match any of the filters are to be returned,
+///       i.e., multiple filters are to be interpreted as `||` conditions.
 ///
-///   A REQ message may contain multiple filters. In this case, events that match any of the filters are to be returned,
-///   i.e., multiple filters are to be interpreted as `||` conditions.
-///
-///  [["CLOSE", subscription_id]] -> used to stop previous subscriptions
-///
-///   `subscription_id`: random string used to represent a subscription.
+///  - `["CLOSE", subscription_id]`: used to stop previous subscriptions. `subscription_id` is a random string used to represent a subscription.
 ///
 pub enum ClientToRelayComm {
   Event,
