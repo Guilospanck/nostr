@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::event::{kind::EventKind, PubKey, id::EventId, Timestamp, tag::TagKind};
+
 ///
 /// Filters are data structures that clients send to relays (being the first on the first connection)
 /// to request data from other clients.
@@ -13,23 +15,34 @@ use serde::{Deserialize, Serialize};
 /// - ids: a list of events of prefixes
 /// - authors: a list of publickeys or prefixes, the pubkey of an event must be one of these
 /// - kinds: a list of kind numbers
-/// - tags: list of tags
-///   [
-///     e: a list of event ids that are referenced in an "e" tag,
-///     p: a list of pubkeys that are referenced in an "p" tag,
-///     ...
-///   ]
+/// - e: a list of event ids that are referenced in an "e" tag,
+/// - p: a list of pubkeys that are referenced in an "p" tag,
 /// - since: a timestamp. Events must be newer than this to pass
 /// - until: a timestamp. Events must be older than this to pass
 /// - limit: maximum number of events to be returned in the initial query (it can be ignored afterwards)
 ///
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct Filter {
-  pub ids: Option<Vec<String>>,
-  pub authors: Option<Vec<String>>,
-  pub kinds: Option<Vec<u64>>,
+  pub ids: Option<Vec<EventId>>,
+  pub authors: Option<Vec<PubKey>>,
+  pub kinds: Option<Vec<EventKind>>,
   pub tags: Option<HashMap<String, Vec<String>>>,
-  pub since: Option<u64>,
-  pub until: Option<u64>,
-  pub limit: Option<u64>,
+  #[serde(rename = "#e")]
+  pub e: Vec<String>,
+  #[serde(rename = "#p")]
+  pub p: Vec<String>,
+  pub since: Option<Timestamp>,
+  pub until: Option<Timestamp>,
+  pub limit: Option<Timestamp>,
+}
+
+impl Filter {
+  pub fn get_tags_kinds(&self) -> Vec<TagKind> {
+    if let None = self.tags {
+      return vec![];
+    }
+
+    let tags = self.tags.unwrap();
+    tags.iter().map(|(key, _)| TagKind::from(key)).collect()
+  }
 }

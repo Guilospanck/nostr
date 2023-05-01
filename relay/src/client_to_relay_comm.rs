@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::event::Event;
 use crate::filter::Filter;
@@ -29,20 +29,20 @@ impl ClientToRelayComm {
   }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct ClientToRelayCommEvent {
   pub code: String, // "EVENT"
   pub event: Event,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct ClientToRelayCommRequest {
   pub code: String, // "REQ"
   pub subscription_id: String,
   pub filters: Vec<Filter>,
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
 pub struct ClientToRelayCommClose {
   pub code: String, // "CLOSE"
   pub subscription_id: String,
