@@ -12,19 +12,21 @@
 - [x] Filters must be related to the `subscription_id` because we need to have a way of deleting them when `CLOSE` message is sent
 - [x] Client REQ message can have multiple filters
 - [x] [RELAY] Should save all events (disconnected clients) in another structure because in the case a client disconnects from the relay, we won't have `ClientConnectionInfo` anymore (because the client is not connected anymore) and, therefore, if we want to preserve the events and send to someone else afterwards, we will need to have this info, otherwise it will be lost.
+- [x] [RELAY] Check what `#[serde(untagged)]` does to enum in `event.rs` -> It removes the enum key and prints only the value.
+- [x] [CLIENT/RELAY] One thing no note is that the `Tags` and the content are dependent on the `Kind`.
 - [ ] [CLIENT] Should save my own events.
 - [ ] [RELAY] Use `limit` from filter on first request of events and return the most recent ones up until the number defined by this value
 - [ ] [CLIENT/RELAY] Clients should not be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Must validate signature.
 - [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
-- [ ] [CLIENT/RELAY] One thing no note is that the `Tags` and the content are dependent on the `Kind`.
-- [ ] [RELAY] Check what `#[serde(untagged)]` does to enum in `event.rs`.
+- [ ] [CLIENT/RELAY] Tests!
 - [ ] Improve error and normal functioning logging/handling.
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)
 - [ ] Implement `optional` NIPs
 
 ## NIPs implemented
+
 - [ ] NIP01
 - [ ] NIP10
 
