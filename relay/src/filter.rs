@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::event::{kind::EventKind, PubKey, id::EventId, Timestamp, tag::TagKind};
+use crate::event::{kind::EventKind, PubKey, id::EventId, Timestamp};
 
 ///
 /// Filters are data structures that clients send to relays (being the first on the first connection)
@@ -28,21 +28,10 @@ pub struct Filter {
   pub kinds: Option<Vec<EventKind>>,
   pub tags: Option<HashMap<String, Vec<String>>>,
   #[serde(rename = "#e")]
-  pub e: Vec<String>,
+  pub e: Option<Vec<String>>,
   #[serde(rename = "#p")]
-  pub p: Vec<String>,
+  pub p: Option<Vec<String>>,
   pub since: Option<Timestamp>,
   pub until: Option<Timestamp>,
   pub limit: Option<Timestamp>,
-}
-
-impl Filter {
-  pub fn get_tags_kinds(&self) -> Vec<TagKind> {
-    if let None = self.tags {
-      return vec![];
-    }
-
-    let tags = self.tags.unwrap();
-    tags.iter().map(|(key, _)| TagKind::from(key)).collect()
-  }
 }
