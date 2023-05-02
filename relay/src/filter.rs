@@ -7,7 +7,7 @@ use crate::event::{kind::EventKind, PubKey, id::EventId, Timestamp};
 ///
 /// Filters are data structures that clients send to relays (being the first on the first connection)
 /// to request data from other clients.
-/// The attributes of a Filter work as && (in other words, all the conditions set must be present
+/// The attributes of a Filter work as `&&` (in other words, all the conditions set must be present
 /// in the event in order to pass the filter).
 /// P.S.: a "REQ" communication from the client can have multiple filters. In this case, all filters will be
 /// used as `||` operator: anything that matches any of the filters will be sent.

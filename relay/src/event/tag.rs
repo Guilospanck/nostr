@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::de::Error as DeserializerError;
+use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, vec};
 
-use super::{EventId, Marker, PubKey, kind::EventKind};
+use super::{EventId, Marker, PubKey};
 
 /// [`Tag`] error
 #[derive(Debug, thiserror::Error)]
@@ -101,8 +102,7 @@ impl From<Tag> for TagKind {
 ///   ["e", "688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6", "wss://relay.damus.io", "root"]
 ///   ```
 ///
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tag {
   /// Generic because maybe the client is sending a tag that we
   /// don't have implemented yet.
@@ -169,5 +169,60 @@ where
     } else {
       Ok(Self::Generic(tag_kind, tag[1..].to_vec()))
     }
+  }
+}
+
+impl From<Tag> for Vec<String> {
+  fn from(data: Tag) -> Self {
+    match data {
+      Tag::Generic(kind, content) => vec![vec![kind.to_string()], content].concat(),
+      Tag::Event(event_id, recommended_relay_url, marker) => {
+        let mut event_tag = vec![TagKind::Event.to_string(), event_id.0];
+
+        if let Some(url) = recommended_relay_url {
+          event_tag.push(url.0);
+        }
+
+        if let Some(marker) = marker {
+          event_tag.push(marker.to_string())
+        }
+
+        event_tag
+      }
+      Tag::PubKey(pubkey, recommended_relay_url) => {
+        let mut pubkey_tag = vec![TagKind::PubKey.to_string(), pubkey];
+
+        if let Some(url) = recommended_relay_url {
+          pubkey_tag.push(url.0);
+        }
+
+        pubkey_tag
+      }
+    }
+  }
+}
+
+impl Serialize for Tag {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let data: Vec<String> = self.clone().into();
+    let mut seq = serializer.serialize_seq(Some(data.len()))?;
+    for element in data.into_iter() {
+      seq.serialize_element(&element)?;
+    }
+    seq.end()
+  }
+}
+
+impl<'de> Deserialize<'de> for Tag {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    type Data = Vec<String>;
+    let vec: Vec<String> = Data::deserialize(deserializer)?;
+    Self::try_from(vec).map_err(DeserializerError::custom)
   }
 }
