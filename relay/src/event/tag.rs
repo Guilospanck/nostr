@@ -15,7 +15,7 @@ pub enum Error {
 /// that is send on an event.
 ///
 #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct UncheckedRecommendRelayURL(String);
+pub struct UncheckedRecommendRelayURL(pub String);
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub enum TagKind {
@@ -136,20 +136,10 @@ where
       }
     } else if tag_len == 3 {
       match tag_kind {
-        TagKind::PubKey => {
-          let pubkey = tag[1].clone();
-          if tag[2].is_empty() {
-            Ok(Self::PubKey(
-              pubkey,
-              Some(UncheckedRecommendRelayURL::default()),
-            ))
-          } else {
-            Ok(Self::PubKey(
-              pubkey,
-              Some(UncheckedRecommendRelayURL(tag[2].clone())),
-            ))
-          }
-        }
+        TagKind::PubKey => Ok(Self::PubKey(
+          tag[1].clone(),
+          (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone()))
+        )),
         TagKind::Event => Ok(Self::Event(
           EventId(tag[1].clone()),
           (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone())),
@@ -184,7 +174,10 @@ impl From<Tag> for Vec<String> {
         }
 
         if let Some(marker) = marker {
-          event_tag.push(marker.to_string())
+          if event_tag.len() == 2 {
+            event_tag.push("".to_string());
+          }
+          event_tag.push(marker.to_string());
         }
 
         event_tag
@@ -207,11 +200,16 @@ impl Serialize for Tag {
   where
     S: Serializer,
   {
+		// using the `impl From<Tag> for Vec<String>`
     let data: Vec<String> = self.clone().into();
+		// A Vec<_> is a sequence, therefore we must tell the
+		// deserializer how long is the sequence (vector's length)
     let mut seq = serializer.serialize_seq(Some(data.len()))?;
+		// Serialize each element of the Vector
     for element in data.into_iter() {
       seq.serialize_element(&element)?;
     }
+		// Finalize the serialization and return the result
     seq.end()
   }
 }
@@ -222,7 +220,12 @@ impl<'de> Deserialize<'de> for Tag {
     D: Deserializer<'de>,
   {
     type Data = Vec<String>;
+    // This is very intelligent. First it deserializes the enum
+    // to something known, like a Vec<String> (serde library can handle this)
+		// So in this case it is deserializing a string (serialized) into
+		// a Vec<String>
     let vec: Vec<String> = Data::deserialize(deserializer)?;
+    // Then it uses the `impl<S> TryFrom<Vec<S>> for Tag` to retrieve the `Tag` enum
     Self::try_from(vec).map_err(DeserializerError::custom)
   }
 }
