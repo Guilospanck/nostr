@@ -111,6 +111,24 @@ pub enum Tag {
   PubKey(PubKey, Option<UncheckedRecommendRelayURL>),
 }
 
+impl Tag {
+  pub fn as_str(&self) -> String {
+    serde_json::to_string(self).unwrap()
+  }
+
+  pub fn from_str(data: String) -> Self {
+    serde_json::from_str(&data).unwrap()
+  }
+
+  pub fn as_vec(&self) -> Vec<String> {
+    self.clone().into()
+  }
+
+  pub fn from_vec(data: Vec<String>) -> Self {
+    Self::try_from(data).unwrap()
+  }
+}
+
 impl<S> TryFrom<Vec<S>> for Tag
 where
   S: Into<String>,
@@ -138,7 +156,7 @@ where
       match tag_kind {
         TagKind::PubKey => Ok(Self::PubKey(
           tag[1].clone(),
-          (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone()))
+          (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone())),
         )),
         TagKind::Event => Ok(Self::Event(
           EventId(tag[1].clone()),
@@ -200,16 +218,16 @@ impl Serialize for Tag {
   where
     S: Serializer,
   {
-		// using the `impl From<Tag> for Vec<String>`
-    let data: Vec<String> = self.clone().into();
-		// A Vec<_> is a sequence, therefore we must tell the
-		// deserializer how long is the sequence (vector's length)
+    // using the `impl From<Tag> for Vec<String>`
+    let data: Vec<String> = self.as_vec();
+    // A Vec<_> is a sequence, therefore we must tell the
+    // deserializer how long is the sequence (vector's length)
     let mut seq = serializer.serialize_seq(Some(data.len()))?;
-		// Serialize each element of the Vector
+    // Serialize each element of the Vector
     for element in data.into_iter() {
       seq.serialize_element(&element)?;
     }
-		// Finalize the serialization and return the result
+    // Finalize the serialization and return the result
     seq.end()
   }
 }
@@ -222,10 +240,244 @@ impl<'de> Deserialize<'de> for Tag {
     type Data = Vec<String>;
     // This is very intelligent. First it deserializes the enum
     // to something known, like a Vec<String> (serde library can handle this)
-		// So in this case it is deserializing a string (serialized) into
-		// a Vec<String>
+    // So in this case it is deserializing a string (serialized) into
+    // a Vec<String>
     let vec: Vec<String> = Data::deserialize(deserializer)?;
     // Then it uses the `impl<S> TryFrom<Vec<S>> for Tag` to retrieve the `Tag` enum
     Self::try_from(vec).map_err(DeserializerError::custom)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[cfg(test)]
+  use pretty_assertions::assert_eq;
+
+  fn make_event_tag_sut(without_relay: bool, without_marker: bool) -> (Tag, String, Vec<String>) {
+    let mut event = Tag::Event(
+      EventId(String::from("event")),
+      Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+      Some(Marker::Root),
+    );
+    let mut serialized_event = "[\"e\",\"event\",\"relay.com\",\"root\"]".to_string();
+    let mut expected_vector: Vec<String> = vec![
+      String::from("e"),
+      String::from("event"),
+      String::from("relay.com"),
+      String::from("root"),
+    ];
+
+    if without_relay && without_marker {
+      event = Tag::Event(EventId(String::from("event")), None, None);
+      serialized_event = "[\"e\",\"event\"]".to_string();
+      expected_vector = vec![String::from("e"), String::from("event")];
+    } else if without_relay {
+      event = Tag::Event(EventId(String::from("event")), None, Some(Marker::Root));
+      serialized_event = "[\"e\",\"event\",\"\",\"root\"]".to_string();
+      expected_vector = vec![
+        String::from("e"),
+        String::from("event"),
+        String::from(""),
+        String::from("root"),
+      ];
+    } else if without_marker {
+      event = Tag::Event(
+        EventId(String::from("event")),
+        Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+        None,
+      );
+      serialized_event = "[\"e\",\"event\",\"relay.com\"]".to_string();
+      expected_vector = vec![
+        String::from("e"),
+        String::from("event"),
+        String::from("relay.com"),
+      ];
+    }
+
+    (event, serialized_event, expected_vector)
+  }
+
+  fn make_pubkey_tag_sut(without_relay: bool) -> (Tag, String, Vec<String>) {
+    let mut pubkey = Tag::PubKey(
+      String::from("pubkey"),
+      Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+    );
+    let mut expected_pubkey: String = "[\"p\",\"pubkey\",\"relay.com\"]".to_string();
+    let mut expected_vector: Vec<String> = vec![
+      String::from("p"),
+      String::from("pubkey"),
+      String::from("relay.com"),
+    ];
+
+    if without_relay {
+      pubkey = Tag::PubKey(String::from("pubkey"), None);
+      expected_pubkey = "[\"p\",\"pubkey\"]".to_string();
+      expected_vector = vec![String::from("p"), String::from("pubkey")];
+    }
+
+    (pubkey, expected_pubkey, expected_vector)
+  }
+
+  #[test]
+  fn test_tag_serializes_and_deserializes_correctly() {
+    // Generic - serialization
+    let generic = Tag::Generic(
+      TagKind::Custom(String::from("custom_tag")),
+      vec![String::from("potato"), String::from("cake")],
+    );
+    let expected_generic: String = "[\"custom_tag\",\"potato\",\"cake\"]".to_string();
+    assert_eq!(generic.as_str(), expected_generic);
+
+    // Generic - deserialization
+    assert_eq!(Tag::from_str(expected_generic), generic);
+
+    // Pubkey - serialization
+    let (pubkey_without_recommended_relay, expected_pubkey_without_recommended_relay, _) =
+      make_pubkey_tag_sut(true);
+    let (pubkey_complete, expected_pubkey_complete, _) = make_pubkey_tag_sut(false);
+    assert_eq!(
+      pubkey_without_recommended_relay.as_str(),
+      expected_pubkey_without_recommended_relay
+    );
+    assert_eq!(pubkey_complete.as_str(), expected_pubkey_complete);
+
+    // Pubkey - deserialization
+    assert_eq!(
+      Tag::from_str(expected_pubkey_without_recommended_relay),
+      pubkey_without_recommended_relay
+    );
+    assert_eq!(Tag::from_str(expected_pubkey_complete), pubkey_complete);
+
+    // Event - serialization
+    let (
+      event_without_recommended_relay_and_marker,
+      expected_event_without_recommended_relay_and_marker,
+      _,
+    ) = make_event_tag_sut(true, true);
+    let (event_complete_without_marker, expected_event_complete_without_marker, _) =
+      make_event_tag_sut(false, true);
+    let (
+      event_complete_without_recommended_relay,
+      expected_event_complete_without_recommended_relay,
+      _,
+    ) = make_event_tag_sut(true, false);
+    let (event_complete, expected_event_complete, _) = make_event_tag_sut(false, false);
+    assert_eq!(
+      event_without_recommended_relay_and_marker.as_str(),
+      expected_event_without_recommended_relay_and_marker
+    );
+    assert_eq!(
+      event_complete_without_marker.as_str(),
+      expected_event_complete_without_marker
+    );
+    assert_eq!(
+      event_complete_without_recommended_relay.as_str(),
+      expected_event_complete_without_recommended_relay
+    );
+    assert_eq!(event_complete.as_str(), expected_event_complete);
+
+    // Event - deserialization
+    assert_eq!(
+      Tag::from_str(expected_event_without_recommended_relay_and_marker),
+      event_without_recommended_relay_and_marker
+    );
+    assert_eq!(
+      Tag::from_str(expected_event_complete_without_marker),
+      event_complete_without_marker
+    );
+    assert_eq!(
+      Tag::from_str(expected_event_complete_without_recommended_relay),
+      event_complete_without_recommended_relay
+    );
+    assert_eq!(Tag::from_str(expected_event_complete), event_complete);
+  }
+
+  #[test]
+  fn test_tag_as_a_vector_and_it_as_a_tag() {
+    // Generic - as_vec
+    let generic = Tag::Generic(
+      TagKind::Custom(String::from("custom_tag")),
+      vec![String::from("potato"), String::from("cake")],
+    );
+    let expected_generic_vector: Vec<String> = vec![
+      String::from("custom_tag"),
+      String::from("potato"),
+      String::from("cake"),
+    ];
+    assert_eq!(generic.as_vec(), expected_generic_vector);
+
+    // Generic - as_vec
+    assert_eq!(generic, Tag::from_vec(expected_generic_vector));
+
+    // Pubkey - as_vec
+    let (pubkey_tag_complete, _, expected_pubkey_tag_complete_vector) = make_pubkey_tag_sut(false);
+    let (pubkey_tag_without_relay, _, expected_pubkey_tag_without_relay_vector) =
+      make_pubkey_tag_sut(true);
+    assert_eq!(
+      pubkey_tag_complete.as_vec(),
+      expected_pubkey_tag_complete_vector
+    );
+    assert_eq!(
+      pubkey_tag_without_relay.as_vec(),
+      expected_pubkey_tag_without_relay_vector
+    );
+
+    // Pubkey - as_vec
+    assert_eq!(
+      pubkey_tag_complete,
+      Tag::from_vec(expected_pubkey_tag_complete_vector)
+    );
+    assert_eq!(
+      pubkey_tag_without_relay,
+      Tag::from_vec(expected_pubkey_tag_without_relay_vector)
+    );
+
+    // Event - as_vec
+    let (
+      event_without_recommended_relay_and_marker,
+      _,
+      expected_event_without_recommended_relay_and_marker_vector,
+    ) = make_event_tag_sut(true, true);
+    let (event_complete_without_marker, _, expected_event_complete_without_marker_vector) =
+      make_event_tag_sut(false, true);
+    let (
+      event_complete_without_recommended_relay,
+      _,
+      expected_event_complete_without_recommended_relay_vector,
+    ) = make_event_tag_sut(true, false);
+    let (event_complete, _, expected_event_complete_vector) = make_event_tag_sut(false, false);
+    assert_eq!(
+      event_without_recommended_relay_and_marker.as_vec(),
+      expected_event_without_recommended_relay_and_marker_vector
+    );
+    assert_eq!(
+      event_complete_without_marker.as_vec(),
+      expected_event_complete_without_marker_vector
+    );
+    assert_eq!(
+      event_complete_without_recommended_relay.as_vec(),
+      expected_event_complete_without_recommended_relay_vector
+    );
+    assert_eq!(event_complete.as_vec(), expected_event_complete_vector);
+
+    // Event - as_vec
+    assert_eq!(
+      event_without_recommended_relay_and_marker,
+      Tag::from_vec(expected_event_without_recommended_relay_and_marker_vector)
+    );
+    assert_eq!(
+      event_complete_without_marker,
+      Tag::from_vec(expected_event_complete_without_marker_vector)
+    );
+    assert_eq!(
+      event_complete_without_recommended_relay,
+      Tag::from_vec(expected_event_complete_without_recommended_relay_vector)
+    );
+    assert_eq!(
+      event_complete,
+      Tag::from_vec(expected_event_complete_vector)
+    );
   }
 }
