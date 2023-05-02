@@ -16,7 +16,10 @@ use crate::{
     ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest,
   },
   db::EventsDB,
-  event::Event,
+  event::{
+    tag::{Tag, TagKind},
+    Event,
+  },
   filter::Filter,
 };
 
@@ -62,14 +65,12 @@ struct OutboundInfo {
   content: String,
 }
 
-fn check_filter_match_event(event: Event, filter: Filter) -> bool {
-  let mut is_match = true;
-
+fn check_event_match_filter(event: Event, filter: Filter) -> bool {
   // Check IDs
   if let Some(ids) = filter.ids {
     let id_in_list = ids
       .iter()
-      .any(|id| *id == event.id || id.starts_with(&event.id));
+      .any(|id| *id.0 == event.id || id.0.starts_with(&event.id));
     if !id_in_list {
       return false;
     }
@@ -109,36 +110,49 @@ fn check_filter_match_event(event: Event, filter: Filter) -> bool {
     }
   }
 
-  // Check Tags
-  if let Some(tags) = filter.tags {
-    for tag in tags // { "e": ["event_id1", "event_id2", "..."], "p": ["pubkey_1", "pubkey_2", "..."] }
+  // Check #e tag
+  if let Some(event_ids) = filter.e {
+    match event
+      .tags
       .iter()
+      .position(|event_tag| TagKind::from(event_tag.clone()) == TagKind::Event)
     {
-      // tag = ( "e", ["event_id1", "event_id2", "..."] )
-
-      // Check if event has the same tag as the filter is requesting
-      let does_event_have_tag = event
-        .tags
-        .iter()
-        .position(|event_tag| *tag.0 == event_tag[0]);
-
-      match does_event_have_tag {
-        Some(index) => {
-          let is_event_id_referenced_in_requested_filter_tag = tag
-            .1
+      Some(index) => {
+        if let Tag::Event(event_event_tag_id, _, _) = &event.tags[index] {
+          if !event_ids
             .iter()
-            .any(|event_id| *event_id == event.tags[index][1]);
-
-          if !is_event_id_referenced_in_requested_filter_tag {
-            is_match = false;
+            .any(|event_id| *event_id == event_event_tag_id.0)
+          {
+            return false;
           }
         }
-        None => is_match = false, // if a filter requires a tag and the event doesn't have it, it's not a match
       }
+      None => return false,
     }
   }
 
-  is_match
+  // Check #p tag
+  if let Some(pubkeys) = filter.p {
+    match event
+      .tags
+      .iter()
+      .position(|event_tag| TagKind::from(event_tag.clone()) == TagKind::PubKey)
+    {
+      Some(index) => {
+        if let Tag::PubKey(event_pubkey_tag_pubkey, _) = &event.tags[index] {
+          if !pubkeys
+            .iter()
+            .any(|pubkey| *pubkey == *event_pubkey_tag_pubkey)
+          {
+            return false;
+          }
+        }
+      }
+      None => return false,
+    }
+  }
+
+  true
 }
 
 fn send_message_to_client(tx: Tx, content: String) {
@@ -216,7 +230,7 @@ fn on_request_message(
 
   events.iter().for_each(|event| {
     msg_parsed.data.request.filters.iter().for_each(|filter| {
-      if check_filter_match_event(event.clone(), filter.clone()) {
+      if check_event_match_filter(event.clone(), filter.clone()) {
         events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
       }
     })
@@ -231,7 +245,7 @@ fn on_request_message(
 fn on_event_message(
   event: Event,
   event_stringfied: String,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>
+  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
 ) {
   let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
 
@@ -241,7 +255,7 @@ fn on_event_message(
     // Check filters
     client.requests.iter().for_each(|client_req| {
       client_req.filters.iter().for_each(|filter| {
-        if check_filter_match_event(event.clone(), filter.clone()) {
+        if check_event_match_filter(event.clone(), filter.clone()) {
           outbound_client_and_message.push(OutboundInfo {
             tx: client.tx.clone(),
             content: event_stringfied.clone(),
