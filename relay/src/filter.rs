@@ -26,7 +26,6 @@ pub struct Filter {
   pub ids: Option<Vec<EventId>>,
   pub authors: Option<Vec<PubKey>>,
   pub kinds: Option<Vec<EventKind>>,
-  pub tags: Option<HashMap<String, Vec<String>>>,
   #[serde(rename = "#e")]
   pub e: Option<Vec<String>>,
   #[serde(rename = "#p")]

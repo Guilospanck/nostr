@@ -2,6 +2,8 @@
 
 ## TODO
 
+-> Test `limit` of filter on `REQ` message.
+
 - [x] Change `unreachable()` at line 80 of `relay.rs`. Whenever someone sends something that cannot be parsed as EVENT, REQUEST or CLOSE, it breaks
 - [x] Fix `close` message closing the connection even with different id
 - [x] Verify `PoisonError` when client closes connection with Ctrl C
@@ -14,13 +16,15 @@
 - [x] [RELAY] Should save all events (disconnected clients) in another structure because in the case a client disconnects from the relay, we won't have `ClientConnectionInfo` anymore (because the client is not connected anymore) and, therefore, if we want to preserve the events and send to someone else afterwards, we will need to have this info, otherwise it will be lost.
 - [x] [RELAY] Check what `#[serde(untagged)]` does to enum in `event.rs` -> It removes the enum key and prints only the value.
 - [x] [CLIENT/RELAY] One thing no note is that the `Tags` and the content are dependent on the `Kind`.
-- [ ] [CLIENT] Should save my own events.
-- [ ] [RELAY] Use `limit` from filter on first request of events and return the most recent ones up until the number defined by this value
-- [ ] [CLIENT/RELAY] Clients should not be allowed to open more than one connection to the same server.
-- [ ] [CLIENT] Must validate signature.
-- [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
+- [x] [RELAY] Use `limit` from filter on first request of events and return the most recent ones up until the number defined by this value
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
 - [ ] [CLIENT/RELAY] Tests!
+- [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
+- [ ] [CLIENT] Should save its own events.
+- [ ] [CLIENT] Should save its own filters in order to request data from different relays.
+- [ ] [CLIENT] Should have a way of handling duplicated events, since a client can be connected to multiple relays.
+- [ ] [CLIENT] Must validate signature.
+- [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
 - [ ] Improve error and normal functioning logging/handling.
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)
 - [ ] Implement `optional` NIPs

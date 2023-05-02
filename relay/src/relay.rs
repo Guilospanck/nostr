@@ -228,13 +228,24 @@ fn on_request_message(
   // Check all events from the database that match the requested filter
   let mut events_to_send_to_client_that_match_the_requested_filter: Vec<Event> = vec![];
 
-  events.iter().for_each(|event| {
-    msg_parsed.data.request.filters.iter().for_each(|filter| {
+  for filter in msg_parsed.data.request.filters.iter() {
+    let mut events_added_for_this_filter: Vec<Event> = vec![];
+    for event in events.iter() {
       if check_event_match_filter(event.clone(), filter.clone()) {
-        events_to_send_to_client_that_match_the_requested_filter.push(event.clone());
+        events_added_for_this_filter.push(event.clone());
       }
-    })
-  });
+    }
+    // Check limit of the filter as the REQ message will only be called on the first time something is required.
+    if let Some(limit) = filter.limit {
+      // Put the newest events first
+      events_added_for_this_filter.sort_by(|event1, event2| event2.created_at.cmp(&event1.created_at));
+      // Get up to the limit of the filter
+      let slice = &events_added_for_this_filter[..limit as usize];
+      events_to_send_to_client_that_match_the_requested_filter.extend_from_slice(slice);
+    } else {
+      events_to_send_to_client_that_match_the_requested_filter.extend(events_added_for_this_filter);
+    }
+  }
 
   // Send to client all events matched
   let events_stringfied =
@@ -362,7 +373,7 @@ async fn handle_connection(
 
     if msg_parsed.is_event {
       let event = msg_parsed.data.event.event.clone();
-      let event_stringfied = serde_json::to_string(&event).unwrap();
+      let event_stringfied = event.as_str();
 
       let mut mutable_events_db = events_db.lock().unwrap();
 
