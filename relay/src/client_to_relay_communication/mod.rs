@@ -184,16 +184,22 @@ pub fn on_event_message(
   // we have its data stored in `clients`, so NO need to verify if he exists
   for client in clients.iter_mut() {
     // Check filters
-    client.requests.iter().for_each(|client_req| {
-      client_req.filters.iter().for_each(|filter| {
+    'outer: for client_req in client.requests.iter() {
+      for filter in client_req.filters.iter() {
         if check_event_match_filter(event.clone(), filter.clone()) {
           outbound_client_and_message.push(OutboundInfo {
             tx: client.tx.clone(),
             content: event_stringfied.clone(),
           });
+          // I can break from going through client requests
+          // because I have already found that this client requests
+          // this event, therefore after adding him to the
+          // `outbound_client_and_message` array, I can go
+          // to the next one.
+          break 'outer;
         }
-      });
-    });
+      }
+    }
   }
 
   outbound_client_and_message
