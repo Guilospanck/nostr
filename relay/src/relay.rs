@@ -13,7 +13,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::{
   client_to_relay_communication::{
-    on_close_message, on_event_message, on_request_message,
+    close::on_close_message,
+    event::on_event_message,
+    request::on_request_message,
     types::{ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest},
   },
   db::EventsDB,
