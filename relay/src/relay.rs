@@ -2,45 +2,41 @@ use std::{
   env,
   io::Error as IoError,
   net::SocketAddr,
-  sync::{Arc, Mutex, MutexGuard},
+  sync::{Arc, Mutex},
 };
 
-use futures_channel::mpsc::{unbounded, UnboundedSender};
+use futures_channel::mpsc::unbounded;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::tungstenite::protocol::Message;
 
 use crate::{
-  client_to_relay_comm::{
-    ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest,
+  client_to_relay_communication::{
+    on_close_message, on_event_message, on_request_message,
+    types::{ClientToRelayCommClose, ClientToRelayCommEvent, ClientToRelayCommRequest},
   },
   db::EventsDB,
-  event::{
-    tag::{Tag, TagKind},
-    Event,
-  },
+  event::Event,
   filter::Filter,
+  relay_to_client_communication::Tx,
 };
-
-type Tx = UnboundedSender<Message>;
 
 /// Holds information about the requests made by a client.
 ///
 #[derive(Debug)]
-struct ClientRequests {
-  subscription_id: String,
-  filters: Vec<Filter>,
+pub struct ClientRequests {
+  pub subscription_id: String,
+  pub filters: Vec<Filter>,
 }
 
 /// Holds information about the clients connection.
 /// A client cannot have more than one connection with the same relay.
 ///
 #[derive(Debug)]
-struct ClientConnectionInfo {
-  tx: Tx,
-  socket_addr: SocketAddr,
-  requests: Vec<ClientRequests>,
+pub struct ClientConnectionInfo {
+  pub tx: Tx,
+  pub socket_addr: SocketAddr,
+  pub requests: Vec<ClientRequests>,
 }
 
 #[derive(Default, Clone)]
@@ -57,227 +53,6 @@ struct MsgResult {
   is_event: bool,
   is_request: bool,
   data: AnyCommunicationFromClient,
-}
-
-#[derive(Debug)]
-struct OutboundInfo {
-  tx: Tx,
-  content: String,
-}
-
-fn check_event_match_filter(event: Event, filter: Filter) -> bool {
-  // Check IDs
-  if let Some(ids) = filter.ids {
-    let id_in_list = ids
-      .iter()
-      .any(|id| *id.0 == event.id || id.0.starts_with(&event.id));
-    if !id_in_list {
-      return false;
-    }
-  }
-
-  // Check Authors
-  if let Some(authors) = filter.authors {
-    let author_in_list = authors
-      .iter()
-      .any(|author| *author == event.pubkey || author.starts_with(&event.pubkey));
-    if !author_in_list {
-      return false;
-    }
-  }
-
-  // Check Kinds
-  if let Some(kinds) = filter.kinds {
-    let kind_in_list = kinds.iter().any(|kind| *kind == event.kind);
-    if !kind_in_list {
-      return false;
-    }
-  }
-
-  // Check Since
-  if let Some(since) = filter.since {
-    let event_after_since = since <= event.created_at;
-    if !event_after_since {
-      return false;
-    }
-  }
-
-  // Check Until
-  if let Some(until) = filter.until {
-    let event_before_until = until >= event.created_at;
-    if !event_before_until {
-      return false;
-    }
-  }
-
-  // Check #e tag
-  if let Some(event_ids) = filter.e {
-    match event
-      .tags
-      .iter()
-      .position(|event_tag| TagKind::from(event_tag.clone()) == TagKind::Event)
-    {
-      Some(index) => {
-        if let Tag::Event(event_event_tag_id, _, _) = &event.tags[index] {
-          if !event_ids
-            .iter()
-            .any(|event_id| *event_id == event_event_tag_id.0)
-          {
-            return false;
-          }
-        }
-      }
-      None => return false,
-    }
-  }
-
-  // Check #p tag
-  if let Some(pubkeys) = filter.p {
-    match event
-      .tags
-      .iter()
-      .position(|event_tag| TagKind::from(event_tag.clone()) == TagKind::PubKey)
-    {
-      Some(index) => {
-        if let Tag::PubKey(event_pubkey_tag_pubkey, _) = &event.tags[index] {
-          if !pubkeys
-            .iter()
-            .any(|pubkey| *pubkey == *event_pubkey_tag_pubkey)
-          {
-            return false;
-          }
-        }
-      }
-      None => return false,
-    }
-  }
-
-  true
-}
-
-fn send_message_to_client(tx: Tx, content: String) {
-  tx.unbounded_send(Message::binary(format!("{}", content).as_bytes()))
-    .unwrap();
-}
-
-fn broadcast_message_to_clients(outbound_client_and_message: Vec<OutboundInfo>) {
-  for recp in outbound_client_and_message {
-    send_message_to_client(recp.tx.clone(), recp.content.clone());
-  }
-}
-
-fn on_close_message(
-  msg_parsed: MsgResult,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-  addr: SocketAddr,
-) {
-  match clients.iter().position(|client| client.socket_addr == addr) {
-    Some(client_idx) => {
-      // Client can only close the subscription of its own connection
-      match clients[client_idx]
-        .requests
-        .iter()
-        .position(|client_req| client_req.subscription_id == msg_parsed.data.close.subscription_id)
-      {
-        Some(client_req_index) => {
-          clients[client_idx].requests.remove(client_req_index);
-        }
-        None => (),
-      }
-    }
-    None => (),
-  };
-}
-
-fn on_request_message(
-  msg_parsed: MsgResult,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-  addr: SocketAddr,
-  tx: UnboundedSender<Message>,
-  events: &MutexGuard<Vec<Event>>,
-) {
-  // we need to do this because on the first time a client connects, it will send a `REQUEST` message
-  // and we won't have it in our `clients` array yet.
-  match clients.iter_mut().find(|client| client.socket_addr == addr) {
-    Some(client) => {
-      // client already exists, so his info should be updated
-      match client
-        .requests
-        .iter_mut()
-        .position(|req| req.subscription_id == msg_parsed.data.request.subscription_id)
-      {
-        Some(index) => client.requests[index].filters = msg_parsed.data.request.filters.clone(), // overwrites filters
-        None => client.requests.push(ClientRequests {
-          // adds new one to the array of requests of this connected client
-          subscription_id: msg_parsed.data.request.subscription_id.clone(),
-          filters: msg_parsed.data.request.filters.clone(),
-        }),
-      };
-    }
-    None => clients.push(ClientConnectionInfo {
-      // creates a new client connection
-      tx: tx.clone(),
-      socket_addr: addr,
-      requests: vec![ClientRequests {
-        subscription_id: msg_parsed.data.request.subscription_id.clone(),
-        filters: msg_parsed.data.request.filters.clone(),
-      }],
-    }),
-  };
-
-  // Check all events from the database that match the requested filter
-  let mut events_to_send_to_client_that_match_the_requested_filter: Vec<Event> = vec![];
-
-  for filter in msg_parsed.data.request.filters.iter() {
-    let mut events_added_for_this_filter: Vec<Event> = vec![];
-    for event in events.iter() {
-      if check_event_match_filter(event.clone(), filter.clone()) {
-        events_added_for_this_filter.push(event.clone());
-      }
-    }
-    // Check limit of the filter as the REQ message will only be called on the first time something is required.
-    if let Some(limit) = filter.limit {
-      // Put the newest events first
-      events_added_for_this_filter.sort_by(|event1, event2| event2.created_at.cmp(&event1.created_at));
-      // Get up to the limit of the filter
-      let slice = &events_added_for_this_filter[..limit as usize];
-      events_to_send_to_client_that_match_the_requested_filter.extend_from_slice(slice);
-    } else {
-      events_to_send_to_client_that_match_the_requested_filter.extend(events_added_for_this_filter);
-    }
-  }
-
-  // Send to client all events matched
-  let events_stringfied =
-    serde_json::to_string(&events_to_send_to_client_that_match_the_requested_filter).unwrap();
-  send_message_to_client(tx, events_stringfied);
-}
-
-fn on_event_message(
-  event: Event,
-  event_stringfied: String,
-  clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-) {
-  let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
-
-  // when an `event` message is received, it's because we are already connected to the client and, therefore,
-  // we have its data stored in `clients`, so NO need to verify if he exists
-  for client in clients.iter_mut() {
-    // Check filters
-    client.requests.iter().for_each(|client_req| {
-      client_req.filters.iter().for_each(|filter| {
-        if check_event_match_filter(event.clone(), filter.clone()) {
-          outbound_client_and_message.push(OutboundInfo {
-            tx: client.tx.clone(),
-            content: event_stringfied.clone(),
-          });
-        }
-      });
-    });
-  }
-
-  // We want to broadcast the message to everyone that matches the filter.
-  broadcast_message_to_clients(outbound_client_and_message);
 }
 
 /*
@@ -364,11 +139,17 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_close {
-      on_close_message(msg_parsed.clone(), &mut clients, addr);
+      on_close_message(msg_parsed.clone().data.close, &mut clients, addr);
     }
 
     if msg_parsed.is_request {
-      on_request_message(msg_parsed.clone(), &mut clients, addr, tx.clone(), &events);
+      on_request_message(
+        msg_parsed.clone().data.request,
+        &mut clients,
+        addr,
+        tx.clone(),
+        &events,
+      );
     }
 
     if msg_parsed.is_event {
