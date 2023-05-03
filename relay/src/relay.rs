@@ -26,7 +26,7 @@ pub type Tx = UnboundedSender<Message>;
 
 /// Holds information about the requests made by a client.
 ///
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ClientRequests {
   pub subscription_id: String,
   pub filters: Vec<Filter>,
