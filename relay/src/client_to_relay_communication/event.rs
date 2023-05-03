@@ -63,7 +63,6 @@ mod tests {
     mock_clients: Arc<Mutex<Vec<ClientConnectionInfo>>>,
     mock_addr: SocketAddr,
     mock_tx: Tx,
-    mock_events: Arc<Mutex<Vec<Event>>>,
     mock_event: Event,
     mock_filter: Filter,
   }
@@ -95,16 +94,12 @@ mod tests {
       let mock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
       let (mock_tx, _rx) = futures_channel::mpsc::unbounded::<Message>();
 
-      let empty_events: Vec<Event> = vec![];
-      let mock_events = Arc::new(Mutex::new(empty_events));
-
       let mock_event = Self::mock_event(mock_filter_id);
 
       Self {
         mock_addr,
         mock_client_request,
         mock_clients,
-        mock_events,
         mock_tx,
         mock_event,
         mock_filter,
