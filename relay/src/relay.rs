@@ -5,10 +5,11 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use futures_channel::mpsc::unbounded;
+use futures_channel::mpsc::{unbounded, UnboundedSender};
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::tungstenite::Message;
 
 use crate::{
   client_to_relay_communication::{
@@ -18,8 +19,10 @@ use crate::{
   db::EventsDB,
   event::Event,
   filter::Filter,
-  relay_to_client_communication::Tx,
+  relay_to_client_communication::{broadcast_message_to_clients, send_message_to_client},
 };
+
+pub type Tx = UnboundedSender<Message>;
 
 /// Holds information about the requests made by a client.
 ///
@@ -143,13 +146,17 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_request {
-      on_request_message(
+      let events_to_send_to_client = on_request_message(
         msg_parsed.clone().data.request,
         &mut clients,
         addr,
         tx.clone(),
         &events,
       );
+
+      // Send to client all events matched
+      let events_stringfied = serde_json::to_string(&events_to_send_to_client).unwrap();
+      send_message_to_client(tx.clone(), events_stringfied);
     }
 
     if msg_parsed.is_event {
@@ -166,7 +173,10 @@ async fn handle_connection(
           .unwrap();
       }
 
-      on_event_message(event, event_stringfied, &mut clients);
+      let outbound_client_and_message = on_event_message(event, event_stringfied, &mut clients);
+
+      // We want to broadcast the message to everyone that matches the filter.
+      broadcast_message_to_clients(outbound_client_and_message);
     }
 
     future::ok(())

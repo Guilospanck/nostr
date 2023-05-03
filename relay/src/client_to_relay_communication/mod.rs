@@ -5,10 +5,12 @@ use crate::{
     tag::{Tag, TagKind},
     Event,
   },
-  filter::Filter, relay_to_client_communication::{Tx, send_message_to_client, OutboundInfo, broadcast_message_to_clients}, relay::{ClientRequests, ClientConnectionInfo},
+  filter::Filter,
+  relay::{ClientConnectionInfo, ClientRequests, Tx},
+  relay_to_client_communication::OutboundInfo,
 };
 
-use self::types::{ClientToRelayCommRequest, ClientToRelayCommClose};
+use self::types::{ClientToRelayCommClose, ClientToRelayCommRequest};
 
 // Internal `client_to_relay_communication` modules
 pub mod types;
@@ -103,13 +105,20 @@ fn check_event_match_filter(event: Event, filter: Filter) -> bool {
   true
 }
 
+/// Updates an already connected client -
+/// overwriting the filters if they have the same
+/// `subscription_id` or adding the new ones to the array -
+/// or create a new one with this request.
+///
+/// Returns the saved events that match the requested filters.
+///
 pub fn on_request_message(
   client_request: ClientToRelayCommRequest,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
   addr: SocketAddr,
   tx: Tx,
   events: &MutexGuard<Vec<Event>>,
-) {
+) -> Vec<Event> {
   // we need to do this because on the first time a client connects, it will send a `REQUEST` message
   // and we won't have it in our `clients` array yet.
   match clients.iter_mut().find(|client| client.socket_addr == addr) {
@@ -161,17 +170,14 @@ pub fn on_request_message(
     events_to_send_to_client_that_match_the_requested_filter.extend(events_added_for_this_filter);
   }
 
-  // Send to client all events matched
-  let events_stringfied =
-    serde_json::to_string(&events_to_send_to_client_that_match_the_requested_filter).unwrap();
-  send_message_to_client(tx, events_stringfied);
+  events_to_send_to_client_that_match_the_requested_filter
 }
 
 pub fn on_event_message(
   event: Event,
   event_stringfied: String,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
-) {
+) -> Vec<OutboundInfo> {
   let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
 
   // when an `event` message is received, it's because we are already connected to the client and, therefore,
@@ -190,8 +196,7 @@ pub fn on_event_message(
     });
   }
 
-  // We want to broadcast the message to everyone that matches the filter.
-  broadcast_message_to_clients(outbound_client_and_message);
+  outbound_client_and_message
 }
 
 pub fn on_close_message(

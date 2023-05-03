@@ -1,10 +1,8 @@
-use futures_channel::mpsc::UnboundedSender;
 use tokio_tungstenite::tungstenite::Message;
 
+use crate::relay::Tx;
+
 pub mod types;
-
-pub type Tx = UnboundedSender<Message>;
-
 #[derive(Debug)]
 pub struct OutboundInfo {
   pub tx: Tx,
