@@ -21,7 +21,9 @@ use crate::{
   db::EventsDB,
   event::Event,
   filter::Filter,
-  relay_to_client_communication::{broadcast_message_to_clients, send_message_to_client},
+  relay_to_client_communication::{
+    broadcast_message_to_clients, eose::RelayToClientCommEose, send_message_to_client,
+  },
 };
 
 pub type Tx = UnboundedSender<Message>;
@@ -156,9 +158,17 @@ async fn handle_connection(
         &events,
       );
 
+      // TODO: fix this. Needs to use the `.as_content()` fn from RelayToClientCommEvent
       // Send to client all events matched
       let events_stringfied = serde_json::to_string(&events_to_send_to_client).unwrap();
       send_message_to_client(tx.clone(), events_stringfied);
+
+      // Send EOSE event to indicate end of stored events
+      let eose = RelayToClientCommEose {
+        subscription_id: msg_parsed.clone().data.request.subscription_id,
+        ..Default::default()
+      };
+      send_message_to_client(tx.clone(), eose.as_content());
     }
 
     if msg_parsed.is_event {

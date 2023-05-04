@@ -5,6 +5,7 @@ use crate::relay::Tx;
 // internal modules
 pub mod types;
 pub mod event;
+pub mod eose;
 
 #[derive(Debug)]
 pub struct OutboundInfo {
