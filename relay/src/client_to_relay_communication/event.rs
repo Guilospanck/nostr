@@ -1,14 +1,13 @@
 use std::sync::MutexGuard;
 
 use crate::{
-  event::Event, relay::ClientConnectionInfo, relay_to_client_communication::OutboundInfo,
+  event::Event, relay::ClientConnectionInfo, relay_to_client_communication::{OutboundInfo, event::RelayToClientCommEvent},
 };
 
 use super::check_event_match_filter;
 
 pub fn on_event_message(
   event: Event,
-  event_stringfied: String,
   clients: &mut MutexGuard<Vec<ClientConnectionInfo>>,
 ) -> Vec<OutboundInfo> {
   let mut outbound_client_and_message: Vec<OutboundInfo> = vec![];
@@ -22,7 +21,12 @@ pub fn on_event_message(
         if check_event_match_filter(event.clone(), filter.clone()) {
           outbound_client_and_message.push(OutboundInfo {
             tx: client.tx.clone(),
-            content: event_stringfied.clone(),
+            content: RelayToClientCommEvent {
+              subscription_id: client_req.subscription_id.clone(),
+              event: event.clone(),
+              ..Default::default()
+            }
+            .as_content(),
           });
           // I can break from going through client requests
           // because I have already found that this client requests
@@ -119,11 +123,7 @@ mod tests {
     let mock = EvtSut::new();
     let mut clients = mock.mock_clients.lock().unwrap();
 
-    let outbound_client_and_message = on_event_message(
-      mock.mock_event.clone(),
-      mock.mock_event.as_str(),
-      &mut clients,
-    );
+    let outbound_client_and_message = on_event_message(mock.mock_event.clone(), &mut clients);
 
     assert_eq!(outbound_client_and_message.len(), 0);
   }
@@ -141,11 +141,7 @@ mod tests {
       }],
     });
 
-    let outbound_client_and_message = on_event_message(
-      mock.mock_event.clone(),
-      mock.mock_event.as_str(),
-      &mut clients,
-    );
+    let outbound_client_and_message = on_event_message(mock.mock_event.clone(), &mut clients);
 
     assert_eq!(outbound_client_and_message.len(), 1);
   }
@@ -163,11 +159,7 @@ mod tests {
       }],
     });
 
-    let outbound_client_and_message = on_event_message(
-      mock.mock_event.clone(),
-      mock.mock_event.as_str(),
-      &mut clients,
-    );
+    let outbound_client_and_message = on_event_message(mock.mock_event.clone(), &mut clients);
 
     assert_eq!(outbound_client_and_message.len(), 1);
   }

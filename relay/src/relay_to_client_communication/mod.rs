@@ -2,7 +2,10 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::relay::Tx;
 
+// internal modules
 pub mod types;
+pub mod event;
+
 #[derive(Debug)]
 pub struct OutboundInfo {
   pub tx: Tx,

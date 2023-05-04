@@ -175,7 +175,7 @@ async fn handle_connection(
           .unwrap();
       }
 
-      let outbound_client_and_message = on_event_message(event, event_stringfied, &mut clients);
+      let outbound_client_and_message = on_event_message(event, &mut clients);
 
       // We want to broadcast the message to everyone that matches the filter.
       broadcast_message_to_clients(outbound_client_and_message);
