@@ -158,8 +158,6 @@ async fn handle_connection(
         &events,
       );
 
-      // TODO: fix this. Needs to use the `.as_content()` fn from RelayToClientCommEvent
-      // Send to client all events matched
       let events_stringfied = serde_json::to_string(&events_to_send_to_client).unwrap();
       send_message_to_client(tx.clone(), events_stringfied);
 

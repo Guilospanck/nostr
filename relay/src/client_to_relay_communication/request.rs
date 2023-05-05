@@ -3,6 +3,7 @@ use std::{net::SocketAddr, sync::MutexGuard};
 use crate::{
   event::Event,
   relay::{ClientConnectionInfo, ClientRequests, Tx},
+  relay_to_client_communication::event::RelayToClientCommEvent,
 };
 
 use super::{check_event_match_filter, types::ClientToRelayCommRequest};
@@ -20,7 +21,7 @@ pub fn on_request_message(
   addr: SocketAddr,
   tx: Tx,
   events: &MutexGuard<Vec<Event>>,
-) -> Vec<Event> {
+) -> Vec<RelayToClientCommEvent> {
   // we need to do this because on the first time a client connects, it will send a `REQUEST` message
   // and we won't have it in our `clients` array yet.
   match clients.iter_mut().find(|client| client.socket_addr == addr) {
@@ -51,20 +52,25 @@ pub fn on_request_message(
   };
 
   // Check all events from the database that match the requested filter
-  let mut events_to_send_to_client_that_match_the_requested_filter: Vec<Event> = vec![];
+  let mut events_to_send_to_client_that_match_the_requested_filter: Vec<RelayToClientCommEvent> =
+    vec![];
 
   for filter in client_request.filters.iter() {
-    let mut events_added_for_this_filter: Vec<Event> = vec![];
+    let mut events_added_for_this_filter: Vec<RelayToClientCommEvent> = vec![];
     for event in events.iter() {
       if check_event_match_filter(event.clone(), filter.clone()) {
-        events_added_for_this_filter.push(event.clone());
+        events_added_for_this_filter.push(RelayToClientCommEvent {
+          subscription_id: client_request.subscription_id.clone(),
+          event: event.clone(),
+          ..Default::default()
+        });
       }
     }
     // Check limit of the filter as the REQ message will only be called on the first time something is required.
     if let Some(limit) = filter.limit {
       // Put the newest events first
       events_added_for_this_filter
-        .sort_by(|event1, event2| event2.created_at.cmp(&event1.created_at));
+        .sort_by(|event1, event2| event2.event.created_at.cmp(&event1.event.created_at));
       // Get up to the limit of the filter
       let slice = &events_added_for_this_filter.clone()[..limit as usize];
       events_added_for_this_filter = slice.to_vec();
@@ -101,6 +107,7 @@ mod tests {
     mock_tx: Tx,
     mock_events: Arc<Mutex<Vec<Event>>>,
     mock_event: Event,
+    mock_relay_to_client_event: RelayToClientCommEvent
   }
 
   impl ReqSut {
@@ -133,6 +140,12 @@ mod tests {
 
       let mock_event = Self::mock_event(mock_filter_id);
 
+      let mock_relay_to_client_event = RelayToClientCommEvent {
+        subscription_id: mock_client_request.subscription_id.clone(),
+        event: mock_event.clone(),
+        ..Default::default()
+      };
+
       Self {
         mock_addr,
         mock_client_request,
@@ -140,6 +153,7 @@ mod tests {
         mock_events,
         mock_tx,
         mock_event,
+        mock_relay_to_client_event
       }
     }
 
@@ -270,7 +284,7 @@ mod tests {
     );
     assert_eq!(
       events_to_send_to_client_that_match_the_requested_filter,
-      vec![mock.mock_event]
+      vec![mock.mock_relay_to_client_event]
     );
     assert_eq!(clients.len(), 1);
     assert_eq!(clients[0].socket_addr, mock.mock_addr);
@@ -301,9 +315,9 @@ mod tests {
     assert_eq!(
       events_to_send_to_client_that_match_the_requested_filter,
       vec![
-        mock.mock_event.clone(),
-        mock.mock_event.clone(),
-        mock.mock_event
+        mock.mock_relay_to_client_event.clone(),
+        mock.mock_relay_to_client_event.clone(),
+        mock.mock_relay_to_client_event
       ]
     );
     assert_eq!(clients.len(), 1);
