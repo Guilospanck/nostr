@@ -227,7 +227,7 @@ pub enum MainError {
 pub async fn initiate_relay() -> Result<(), MainError> {
   let addr = env::args()
     .nth(1)
-    .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+    .unwrap_or_else(|| "0.0.0.0:8080".to_string());
 
   // Read events from DB
   let events_db = EventsDB::new().unwrap();

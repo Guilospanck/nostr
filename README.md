@@ -15,8 +15,11 @@
 - [x] [RELAY] Check what `#[serde(untagged)]` does to enum in `event.rs` -> It removes the enum key and prints only the value.
 - [x] [CLIENT/RELAY] One thing no note is that the `Tags` and the content are dependent on the `Kind`.
 - [x] [RELAY] Use `limit` from filter on first request of events and return the most recent ones up until the number defined by this value
+- [x] [CLIENT/RELAY] Tests!
+- [ ] [CLIENT] Should sign events properly.
+- [ ] [RELAY] Should check event to verify if the signature is valid.
+- [ ] [RELAY] Add listener to CTRL C.
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
-- [ ] [CLIENT/RELAY] Tests!
 - [ ] [RELAY] Verify [`UnboundedSender<Message>`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.UnboundedSender.html) for tips on dealing with closed connection.
 - [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own events.
