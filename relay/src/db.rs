@@ -1,3 +1,4 @@
+use std::fs;
 use redb::{Database, ReadableTable, TableDefinition, WriteTransaction};
 
 use crate::event::Event;
@@ -9,6 +10,7 @@ pub struct EventsDB<'a> {
 
 impl EventsDB<'_> {
   pub fn new() -> Result<Self, redb::Error> {
+    fs::create_dir_all("db/")?;
     let db = Database::create("db/events.redb")?;
     const EVENTS_TABLE: TableDefinition<u64, &str> = TableDefinition::new("events");
 
