@@ -10,7 +10,7 @@ pub struct RelayToClientCommNotice {
 }
 
 impl RelayToClientCommNotice {
-  fn as_content(&self) -> String {
+  pub fn as_content(&self) -> String {
     serde_json::to_string(self).unwrap()
   }
 

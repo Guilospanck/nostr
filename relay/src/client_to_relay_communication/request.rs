@@ -66,11 +66,13 @@ pub fn on_request_message(
         });
       }
     }
+    
+    // Put the newest events first
+    events_added_for_this_filter
+      .sort_by(|event1, event2| event2.event.created_at.cmp(&event1.event.created_at));
+
     // Check limit of the filter as the REQ message will only be called on the first time something is required.
     if let Some(limit) = filter.limit {
-      // Put the newest events first
-      events_added_for_this_filter
-        .sort_by(|event1, event2| event2.event.created_at.cmp(&event1.event.created_at));
       // Get up to the limit of the filter
       let slice = &events_added_for_this_filter.clone()[..limit as usize];
       events_added_for_this_filter = slice.to_vec();
@@ -107,7 +109,7 @@ mod tests {
     mock_tx: Tx,
     mock_events: Arc<Mutex<Vec<Event>>>,
     mock_event: Event,
-    mock_relay_to_client_event: RelayToClientCommEvent
+    mock_relay_to_client_event: RelayToClientCommEvent,
   }
 
   impl ReqSut {
@@ -153,7 +155,7 @@ mod tests {
         mock_events,
         mock_tx,
         mock_event,
-        mock_relay_to_client_event
+        mock_relay_to_client_event,
       }
     }
 

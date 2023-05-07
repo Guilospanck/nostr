@@ -22,7 +22,8 @@ use crate::{
   event::Event,
   filter::Filter,
   relay_to_client_communication::{
-    broadcast_message_to_clients, eose::RelayToClientCommEose, send_message_to_client,
+    broadcast_message_to_clients, eose::RelayToClientCommEose, notice::RelayToClientCommNotice,
+    send_message_to_client,
   },
 };
 
@@ -146,7 +147,20 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_close {
-      on_close_message(msg_parsed.clone().data.close, &mut clients, addr);
+      let closed = on_close_message(msg_parsed.clone().data.close, &mut clients, addr);
+      // Send NOTICE event to inform that the subscription was closed or not
+      let mut message = String::new();
+      if closed {
+        message = "Subscription ended.".to_owned();
+      } else {
+        message = "Subscription not found.".to_owned();
+      }
+      let notice_event = RelayToClientCommNotice {
+        message,
+        ..Default::default()
+      }
+      .as_content();
+      send_message_to_client(tx.clone(), notice_event);
     }
 
     if msg_parsed.is_request {
