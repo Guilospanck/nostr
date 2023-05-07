@@ -1,10 +1,109 @@
+use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::MutexGuard;
 
 use crate::{
-  event::Event, relay::ClientConnectionInfo, relay_to_client_communication::{OutboundInfo, event::RelayToClientCommEvent},
+  event::Event,
+  relay::ClientConnectionInfo,
+  relay_to_client_communication::{event::RelayToClientCommEvent, OutboundInfo},
 };
 
 use super::check_event_match_filter;
+use super::Error;
+
+#[derive(Debug, Clone)]
+pub struct ClientToRelayCommEvent {
+  pub code: String, // "EVENT"
+  pub event: Event,
+}
+
+impl ClientToRelayCommEvent {
+  pub fn as_str(&self) -> Result<String, Error> {
+    serde_json::to_string(self).map_err(Error::Json)
+  }
+
+  pub fn from_str(data: String) -> Result<Self, Error> {
+    serde_json::from_str(&data).map_err(Error::Json)
+  }
+
+  pub fn as_vec(&self) -> Vec<String> {
+    self.clone().into()
+  }
+
+  pub fn from_vec(data: Vec<String>) -> Self {
+    Self::from(data)
+  }
+}
+
+impl Default for ClientToRelayCommEvent {
+  fn default() -> Self {
+    Self {
+      code: String::from("EVENT"),
+      event: Event::default(),
+    }
+  }
+}
+
+impl From<ClientToRelayCommEvent> for Vec<String> {
+  fn from(data: ClientToRelayCommEvent) -> Self {
+    vec![data.code, data.event.as_str()]
+  }
+}
+
+impl<S> From<Vec<S>> for ClientToRelayCommEvent
+where
+  S: Into<String>,
+{
+  fn from(client_to_relay_event: Vec<S>) -> Self {
+    let client_to_relay_event: Vec<String> = client_to_relay_event
+      .into_iter()
+      .map(|v| v.into())
+      .collect();
+
+    let length = client_to_relay_event.len();
+
+    if length == 0 || length == 1 {
+      return Self::default();
+    }
+
+    Self {
+      event: Event::from_serialized(&client_to_relay_event[1].clone()),
+      ..Default::default()
+    }
+  }
+}
+
+impl Serialize for ClientToRelayCommEvent {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    // using the `impl From<ClientToRelayCommEvent> for Vec<String>`
+    let data: Vec<String> = self.as_vec();
+    // A Vec<_> is a sequence, therefore we must tell the
+    // deserializer how long is the sequence (vector's length)
+    let mut seq = serializer.serialize_seq(Some(data.len()))?;
+    // Serialize each element of the Vector
+    for element in data.into_iter() {
+      seq.serialize_element(&element)?;
+    }
+    // Finalize the serialization and return the result
+    seq.end()
+  }
+}
+
+impl<'de> Deserialize<'de> for ClientToRelayCommEvent {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    type Data = Vec<String>;
+    // Deserializes a string (serialized) into
+    // a Vec<String>
+    let vec: Vec<String> = Data::deserialize(deserializer)?;
+    // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommEvent` to retrieve the `ClientToRelayCommEvent` struct
+    Ok(Self::from_vec(vec))
+  }
+}
 
 pub fn on_event_message(
   event: Event,

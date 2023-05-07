@@ -1,5 +1,3 @@
-use serde::de::Error as DeserializerError;
-
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::event::Event;

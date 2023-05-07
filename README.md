@@ -16,11 +16,13 @@
 - [x] [CLIENT/RELAY] One thing no note is that the `Tags` and the content are dependent on the `Kind`.
 - [x] [RELAY] Use `limit` from filter on first request of events and return the most recent ones up until the number defined by this value
 - [x] [CLIENT/RELAY] Tests!
+- [ ] [CLIENT] Change this serialization to transform a vector into a spread of objects (...filter)
+- [ ] [RELAY] When sending events requested to client, do not send it as a vector.
+- [ ] [RELAY] Add listener to CTRL C.
+- [ ] [RELAY] Verify [`UnboundedSender<Message>`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.UnboundedSender.html) for tips on dealing with closed connection.
 - [ ] [CLIENT] Should sign events properly.
 - [ ] [RELAY] Should check event to verify if the signature is valid.
-- [ ] [RELAY] Add listener to CTRL C.
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
-- [ ] [RELAY] Verify [`UnboundedSender<Message>`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.UnboundedSender.html) for tips on dealing with closed connection.
 - [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own events.
 - [ ] [CLIENT] Should save its own filters in order to request data from different relays.

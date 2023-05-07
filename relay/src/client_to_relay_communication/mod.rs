@@ -12,6 +12,14 @@ pub mod event;
 pub mod request;
 pub mod types;
 
+/// [`ClientToRelayCommunication`] error
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+  /// Error serializing or deserializing JSON data
+  #[error(transparent)]
+  Json(#[from] serde_json::Error),
+}
+
 fn check_event_match_filter(event: Event, filter: Filter) -> bool {
   // Check IDs
   if let Some(ids) = filter.ids {
@@ -305,7 +313,10 @@ mod tests {
       ..Default::default()
     };
 
-    assert_eq!(check_event_match_filter(event.clone(), filter.clone()), true);
+    assert_eq!(
+      check_event_match_filter(event.clone(), filter.clone()),
+      true
+    );
 
     // different event id
     let mock_different_id = String::from("f6a54af2-1150-4fbf-8ef5-97220858f9ab");
@@ -314,16 +325,23 @@ mod tests {
       ..event.clone()
     };
 
-    assert_eq!(check_event_match_filter(event_different_id, filter.clone()), false);
+    assert_eq!(
+      check_event_match_filter(event_different_id, filter.clone()),
+      false
+    );
 
     // different event author
-    let mock_different_author = String::from("02e7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76");
+    let mock_different_author =
+      String::from("02e7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76");
     let event_different_author = Event {
       pubkey: mock_different_author,
       ..event.clone()
     };
 
-    assert_eq!(check_event_match_filter(event_different_author, filter.clone()), false);
+    assert_eq!(
+      check_event_match_filter(event_different_author, filter.clone()),
+      false
+    );
 
     // different event kind
     let mock_different_kind = 2;
@@ -332,7 +350,10 @@ mod tests {
       ..event.clone()
     };
 
-    assert_eq!(check_event_match_filter(event_different_kind, filter.clone()), false);
+    assert_eq!(
+      check_event_match_filter(event_different_kind, filter.clone()),
+      false
+    );
 
     // event created at outside of since-until range
     let mock_event_created_at_outside_range = 1773183423 as Timestamp;
@@ -341,7 +362,10 @@ mod tests {
       ..event.clone()
     };
 
-    assert_eq!(check_event_match_filter(event_different_created_at, filter.clone()), false);
+    assert_eq!(
+      check_event_match_filter(event_different_created_at, filter.clone()),
+      false
+    );
 
     // event different p tag
     let mock_event_different_p_tag =
@@ -354,7 +378,10 @@ mod tests {
       ..event.clone()
     };
 
-    assert_eq!(check_event_match_filter(event_different_p_tag, filter.clone()), false);
+    assert_eq!(
+      check_event_match_filter(event_different_p_tag, filter.clone()),
+      false
+    );
 
     // event different e tag
     let mock_event_different_e_tag =
@@ -367,6 +394,9 @@ mod tests {
       ..event.clone()
     };
 
-    assert_eq!(check_event_match_filter(event_different_p_tag, filter.clone()), false);
+    assert_eq!(
+      check_event_match_filter(event_different_p_tag, filter.clone()),
+      false
+    );
   }
 }
