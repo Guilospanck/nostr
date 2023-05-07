@@ -1,3 +1,5 @@
+use std::fs;
+
 use redb::{Database, ReadableTable, TableDefinition, TableHandle};
 
 use crate::schnorr;
@@ -22,6 +24,7 @@ fn write_to_db(db: &Database, k: &str, v: &str) -> Result<(), redb::Error> {
 
 pub fn get_client_keys() -> Result<Keys, redb::Error> {
   let mut keys = Keys::default();
+  fs::create_dir_all("db/")?;
   let db = Database::create("db/client_db.redb")?;
 
   let read_txn = db.begin_read()?;
