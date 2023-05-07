@@ -24,7 +24,11 @@ struct Filter {
   pub limit: Option<u64>,
 }
 
-const LIST_OF_RELAYS: [&str; 2] = ["ws://127.0.0.1:8080/", "ws://127.0.0.1:8081/"];
+const LIST_OF_RELAYS: [&str; 3] = [
+  "wss://nostr-relay-test.onrender.com",
+  "ws://127.0.0.1:8080/",
+  "ws://127.0.0.1:8081/",
+];
 
 // Our helper method which will read data from stdin and send it along the
 // sender provided.
@@ -66,6 +70,7 @@ async fn send_initial_message(
   subs_id.push(subscription_id.clone());
 
   // ["REQ","some-random-subs-id",[{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"],"authors":null,"kinds":null,"#e":null,"#p":null,"since":null,"until":null,"limit":null}]]
+  // ["REQ","some-random-subs-id",[{"ids":null,"authors":["5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835"],"kinds":null,"#e":null,"#p":null,"since":null,"until":null,"limit":null}]]
   // ["EVENT",{"id":"05b25af3-4250-4fbf-8ef5-97220858f9ab","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
   // ["CLOSE","95e1c438-133d-428d-a849-a307c2e1a005"]
   let filter_subscription = format!(
