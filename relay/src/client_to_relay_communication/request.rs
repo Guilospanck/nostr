@@ -1,12 +1,135 @@
-use std::{net::SocketAddr, sync::MutexGuard};
+use std::{net::SocketAddr, sync::MutexGuard, vec};
+
+use serde::{Deserialize, Serialize, Serializer, Deserializer, ser::SerializeSeq};
 
 use crate::{
   event::Event,
+  filter::Filter,
   relay::{ClientConnectionInfo, ClientRequests, Tx},
   relay_to_client_communication::event::RelayToClientCommEvent,
 };
 
-use super::{check_event_match_filter, types::ClientToRelayCommRequest};
+use super::{check_event_match_filter, Error};
+
+#[derive(Debug, Clone)]
+pub struct ClientToRelayCommRequest {
+  pub code: String, // "REQ"
+  pub subscription_id: String,
+  pub filters: Vec<Filter>,
+}
+
+impl ClientToRelayCommRequest {
+  pub fn as_str(&self) -> Result<String, Error> {
+    serde_json::to_string(self).map_err(Error::Json)
+  }
+
+  pub fn from_str(data: String) -> Result<Self, Error> {
+    serde_json::from_str(&data).map_err(Error::Json)
+  }
+
+  pub fn as_vec(&self) -> Vec<String> {
+    self.clone().into()
+  }
+
+  pub fn from_vec(data: Vec<String>) -> Self {
+    Self::try_from(data).unwrap()
+  }
+}
+
+impl Default for ClientToRelayCommRequest {
+  fn default() -> Self {
+    Self {
+      code: String::from("REQ"),
+      subscription_id: String::new(),
+      filters: vec![],
+    }
+  }
+}
+
+impl From<ClientToRelayCommRequest> for Vec<String> {
+  fn from(data: ClientToRelayCommRequest) -> Self {
+    let mut vec = vec![data.code, data.subscription_id];
+    for filter in data.filters {
+      vec.push(filter.as_str());
+    }
+
+    vec
+  }
+}
+
+impl<S> TryFrom<Vec<S>> for ClientToRelayCommRequest
+where
+  S: Into<String>,
+{
+  type Error = Error;
+
+  fn try_from(data: Vec<S>) -> Result<Self, Self::Error> {
+    let data: Vec<String> = data.into_iter().map(|v| v.into()).collect();
+    let data_len: usize = data.len();
+
+    if data_len == 0 || data_len == 1 {
+      return Ok(Self {
+        ..Default::default()
+      });
+    }
+
+    if data_len == 2 {
+      return Ok(Self {
+        subscription_id: data[1].clone(),
+        ..Default::default()
+      });
+    }
+
+    let subscription_id = data[1].clone();
+    let mut filters: Vec<Filter> = vec![];
+
+    for filter in data[2..].iter() {
+      match Filter::from_str(filter.clone()) {
+        Ok(filter) => filters.push(filter),
+        Err(e) => return Err(Error::Json(e)),
+      }
+    }
+
+    Ok(Self {
+      subscription_id,
+      filters,
+      ..Default::default()
+    })
+  }
+}
+
+impl Serialize for ClientToRelayCommRequest {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    // using the `impl From<ClientToRelayCommRequest> for Vec<String>`
+    let data: Vec<String> = self.as_vec();
+    // A Vec<_> is a sequence, therefore we must tell the
+    // deserializer how long is the sequence (vector's length)
+    let mut seq = serializer.serialize_seq(Some(data.len()))?;
+    // Serialize each element of the Vector
+    for element in data.into_iter() {
+      seq.serialize_element(&element)?;
+    }
+    // Finalize the serialization and return the result
+    seq.end()
+  }
+}
+
+impl<'de> Deserialize<'de> for ClientToRelayCommRequest {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    type Data = Vec<String>;
+    // Deserializes a string (serialized) into
+    // a Vec<String>
+    let vec: Vec<String> = Data::deserialize(deserializer)?;
+    // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommRequest` to retrieve the `ClientToRelayCommRequest` struct
+    Ok(Self::from_vec(vec))
+  }
+}
 
 /// Updates an already connected client -
 /// overwriting the filters if they have the same
@@ -66,7 +189,7 @@ pub fn on_request_message(
         });
       }
     }
-    
+
     // Put the newest events first
     events_added_for_this_filter
       .sort_by(|event1, event2| event2.event.created_at.cmp(&event1.event.created_at));

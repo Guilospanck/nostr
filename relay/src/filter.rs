@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::event::{kind::EventKind, PubKey, id::EventId, Timestamp};
@@ -33,4 +31,14 @@ pub struct Filter {
   pub since: Option<Timestamp>,
   pub until: Option<Timestamp>,
   pub limit: Option<Timestamp>,
+}
+
+impl Filter {
+  pub fn as_str(&self) -> String {
+    serde_json::to_string(self).unwrap()
+  }
+
+  pub fn from_str(data: String) -> Result<Self, serde_json::error::Error> {
+    serde_json::from_str(&data)
+  }
 }

@@ -15,8 +15,8 @@ use crate::{
   client_to_relay_communication::{
     close::on_close_message,
     event::{on_event_message, ClientToRelayCommEvent},
-    request::on_request_message,
-    types::{ClientToRelayCommClose, ClientToRelayCommRequest},
+    request::{on_request_message, ClientToRelayCommRequest},
+    types::ClientToRelayCommClose,
   },
   db::EventsDB,
   event::Event,
@@ -90,7 +90,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     return result;
   }
 
-  if let Ok(request_msg) = serde_json::from_str::<ClientToRelayCommRequest>(msg) {
+  if let Ok(request_msg) = ClientToRelayCommRequest::from_str(msg.to_string()) {
     println!("Request:\n {:?}\n\n", request_msg);
 
     result.is_request = true;

@@ -149,7 +149,7 @@ mod tests {
   };
 
   use crate::{
-    client_to_relay_communication::types::ClientToRelayCommRequest,
+    client_to_relay_communication::request::ClientToRelayCommRequest,
     event::id::EventId,
     filter::Filter,
     relay::{ClientRequests, Tx},

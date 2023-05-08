@@ -1,3 +1,14 @@
+/// The three types of `client -> relay` communications.
+///
+///  - `["EVENT", event_JSON]`: used to publish events
+///
+///  - `["REQ", subscription_id, filters_JSON]`: used to request events and subscribe to new updates.
+///       A REQ message may contain multiple filters. In this case, events that match any of the filters are to be returned,
+///       i.e., multiple filters are to be interpreted as `||` conditions.
+///
+///  - `["CLOSE", subscription_id]`: used to stop previous subscriptions. `subscription_id` is a random string used to represent a subscription.
+///
+/// 
 use crate::{
   event::{
     tag::{Tag, TagKind},
