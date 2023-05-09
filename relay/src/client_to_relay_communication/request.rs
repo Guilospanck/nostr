@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::MutexGuard, vec};
 
-use serde::{Deserialize, Serialize, Serializer, Deserializer, ser::SerializeSeq};
+use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
   event::Event,
@@ -11,7 +11,7 @@ use crate::{
 
 use super::{check_event_match_filter, Error};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientToRelayCommRequest {
   pub code: String, // "REQ"
   pub subscription_id: String,
@@ -31,8 +31,8 @@ impl ClientToRelayCommRequest {
     self.clone().into()
   }
 
-  pub fn from_vec(data: Vec<String>) -> Self {
-    Self::try_from(data).unwrap()
+  pub fn from_vec(data: Vec<String>) -> Result<Self, Error> {
+    Self::try_from(data)
   }
 }
 
@@ -127,7 +127,7 @@ impl<'de> Deserialize<'de> for ClientToRelayCommRequest {
     // a Vec<String>
     let vec: Vec<String> = Data::deserialize(deserializer)?;
     // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommRequest` to retrieve the `ClientToRelayCommRequest` struct
-    Ok(Self::from_vec(vec))
+    Ok(Self::from_vec(vec).unwrap())
   }
 }
 
@@ -233,6 +233,7 @@ mod tests {
     mock_events: Arc<Mutex<Vec<Event>>>,
     mock_event: Event,
     mock_relay_to_client_event: RelayToClientCommEvent,
+    mock_filter: Filter,
   }
 
   impl ReqSut {
@@ -242,19 +243,21 @@ mod tests {
 
       let mock_filter_id = String::from("05b25af3-4250-4fbf-8ef5-97220858f9ab");
 
+      let mock_filter: Filter = Filter {
+        ids: Some(vec![EventId(mock_filter_id.clone())]),
+        authors: None,
+        kinds: None,
+        e: None,
+        p: None,
+        since: None,
+        until: None,
+        limit: filter_limit,
+      };
+
       let mock_client_request = ClientToRelayCommRequest {
         code: "REQ".to_string(),
         subscription_id: "mock_subscription_id".to_string(),
-        filters: vec![Filter {
-          ids: Some(vec![EventId(mock_filter_id.clone())]),
-          authors: None,
-          kinds: None,
-          e: None,
-          p: None,
-          since: None,
-          until: None,
-          limit: filter_limit,
-        }],
+        filters: vec![mock_filter.clone()],
       };
 
       let mock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -279,6 +282,7 @@ mod tests {
         mock_tx,
         mock_event,
         mock_relay_to_client_event,
+        mock_filter,
       }
     }
 
@@ -447,5 +451,138 @@ mod tests {
     );
     assert_eq!(clients.len(), 1);
     assert_eq!(clients[0].socket_addr, mock.mock_addr);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_request_default() {
+    let expected = ClientToRelayCommRequest {
+      code: "REQ".to_owned(),
+      subscription_id: "".to_owned(),
+      filters: vec![],
+    };
+
+    let result = ClientToRelayCommRequest::default();
+
+    assert_eq!(expected, result);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_request_as_str() {
+    let mock = ReqSut::new(None);
+
+    let mut client_request_for_expectation_2 = mock.mock_client_request.clone();
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+
+    let filter_as_str = mock.mock_filter.as_str();
+
+    let expected = format!(r#"["REQ","mock_subscription_id","{}"]"#, filter_as_str);
+    let expected2 = format!(
+      r#"["REQ","mock_subscription_id","{}","{}","{}"]"#,
+      filter_as_str, filter_as_str, filter_as_str
+    );
+
+    assert_eq!(
+      expected,
+      mock
+        .mock_client_request
+        .as_str()
+        .unwrap()
+        .replace("\\\"", "\"")
+    );
+    assert_eq!(
+      expected2,
+      client_request_for_expectation_2
+        .as_str()
+        .unwrap()
+        .replace("\\\"", "\"")
+    );
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_request_from_str() {
+    let mock = ReqSut::new(None);
+
+    let mut client_request_for_expectation_2 = mock.mock_client_request.clone();
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+
+    let expected = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
+    let expected2 = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
+
+    let result = ClientToRelayCommRequest::from_str(expected).unwrap();
+    let result2 = ClientToRelayCommRequest::from_str(expected2).unwrap();
+
+    assert_eq!(result, mock.mock_client_request);
+    assert_eq!(result2, client_request_for_expectation_2);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_request_from_vec() {
+    let mock = ReqSut::new(None);
+
+    let mut client_request_for_expectation_2 = mock.mock_client_request.clone();
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+
+    let expected: Vec<String> = vec![
+      "REQ".to_owned(),
+      "mock_subscription_id".to_owned(),
+      mock.mock_filter.as_str(),
+    ];
+    let expected2: Vec<String> = vec![
+      "REQ".to_owned(),
+      "mock_subscription_id".to_owned(),
+      mock.mock_filter.as_str(),
+      mock.mock_filter.as_str(),
+      mock.mock_filter.as_str(),
+    ];
+
+    let result = ClientToRelayCommRequest::from_vec(expected).unwrap();
+    let result2 = ClientToRelayCommRequest::from_vec(expected2).unwrap();
+
+    assert_eq!(result, mock.mock_client_request);
+    assert_eq!(result2, client_request_for_expectation_2);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_request_as_vec() {
+    let mock = ReqSut::new(None);
+
+    let mut client_request_for_expectation_2 = mock.mock_client_request.clone();
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+    client_request_for_expectation_2
+      .filters
+      .push(mock.mock_filter.clone());
+
+    let expected: Vec<String> = vec![
+      "REQ".to_owned(),
+      "mock_subscription_id".to_owned(),
+      mock.mock_filter.as_str(),
+    ];
+    let expected2: Vec<String> = vec![
+      "REQ".to_owned(),
+      "mock_subscription_id".to_owned(),
+      mock.mock_filter.as_str(),
+      mock.mock_filter.as_str(),
+      mock.mock_filter.as_str(),
+    ];
+
+    assert_eq!(expected, mock.mock_client_request.as_vec());
+    assert_eq!(expected2, client_request_for_expectation_2.as_vec());
   }
 }
