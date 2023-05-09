@@ -13,10 +13,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::{
   client_to_relay_communication::{
-    close::on_close_message,
+    close::{on_close_message, ClientToRelayCommClose},
     event::{on_event_message, ClientToRelayCommEvent},
     request::{on_request_message, ClientToRelayCommRequest},
-    types::ClientToRelayCommClose,
   },
   db::EventsDB,
   event::Event,
@@ -74,7 +73,7 @@ struct MsgResult {
 fn parse_message_received_from_client(msg: &str) -> MsgResult {
   let mut result = MsgResult::default();
 
-  if let Ok(close_msg) = serde_json::from_str::<ClientToRelayCommClose>(msg) {
+  if let Ok(close_msg) = ClientToRelayCommClose::from_str(msg.to_string()) {
     println!("Close:\n {:?}\n\n", close_msg);
 
     result.is_close = true;

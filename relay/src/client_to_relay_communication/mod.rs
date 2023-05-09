@@ -21,7 +21,6 @@ use crate::{
 pub mod close;
 pub mod event;
 pub mod request;
-pub mod types;
 
 /// [`ClientToRelayCommunication`] error
 #[derive(thiserror::Error, Debug)]
