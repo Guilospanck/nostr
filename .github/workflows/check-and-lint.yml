@@ -1,0 +1,57 @@
+name: Check and Lint
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+        directories:
+          - ./relay
+          - ./client
+    steps:
+    # Checkout repository
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    # Setup Rust
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        override: true
+
+    # Cargo check
+    - name: Run cargo check on relay
+      working-directory: ${{ matrix.directories }}
+      run: cargo check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+        directories:
+          - ./relay
+          - ./client
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        override: true
+    - run: rustup component add clippy
+    - working-directory: ${{ matrix.directories }}
+      name: clippy ${{ matrix.directories }}
+      run: cargo clippy --all-targets -- -D warnings
