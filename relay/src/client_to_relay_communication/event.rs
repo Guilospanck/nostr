@@ -181,7 +181,7 @@ mod tests {
       let mock_event_id = EventId(mock_filter_id.clone());
 
       let mock_filter = Filter {
-        ids: Some(vec![mock_event_id.clone()]),
+        ids: Some(vec![mock_event_id]),
         authors: None,
         kinds: None,
         e: None,

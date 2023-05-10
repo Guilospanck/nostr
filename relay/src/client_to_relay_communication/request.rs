@@ -165,7 +165,7 @@ pub fn on_request_message(
     }
     None => clients.push(ClientConnectionInfo {
       // creates a new client connection
-      tx: tx.clone(),
+      tx,
       socket_addr: addr,
       requests: vec![ClientRequests {
         subscription_id: client_request.subscription_id.clone(),

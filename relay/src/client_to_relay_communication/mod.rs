@@ -401,11 +401,11 @@ mod tests {
         Tag::PubKey(mock_filter_p_tag, None),
         Tag::Event(EventId(mock_event_different_e_tag), None, None),
       ],
-      ..event.clone()
+      ..event
     };
 
     assert_eq!(
-      check_event_match_filter(event_different_p_tag, filter.clone()),
+      check_event_match_filter(event_different_p_tag, filter),
       false
     );
   }

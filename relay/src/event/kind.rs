@@ -112,7 +112,6 @@ impl fmt::Display for EventKind {
       Self::Text => write!(f, "1"),
       Self::RecommendRelay => write!(f, "2"),
       Self::Custom(kind) => write!(f, "{kind}"),
-      _ => write!(f, ""),
     }
   }
 }

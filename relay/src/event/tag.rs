@@ -150,7 +150,7 @@ where
       match tag_kind {
         TagKind::PubKey => Ok(Self::PubKey(content, None)),
         TagKind::Event => Ok(Self::Event(EventId(content), None, None)),
-        _ => Ok(Self::Generic(tag_kind, vec![content.to_string()])),
+        _ => Ok(Self::Generic(tag_kind, vec![content])),
       }
     } else if tag_len == 3 {
       match tag_kind {

@@ -25,11 +25,11 @@ impl EventsDB<'_> {
   }
 
   fn begin_write(&self) -> Result<WriteTransaction, redb::Error> {
-    Ok(self.db.begin_write()?)
+    self.db.begin_write()
   }
 
   fn commit_txn(&self, write_txn: WriteTransaction) -> Result<(), redb::Error> {
-    Ok(write_txn.commit()?)
+    write_txn.commit()
   }
 
   pub fn write_to_db(

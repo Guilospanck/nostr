@@ -14,15 +14,15 @@ impl RelayToClientCommNotice {
     serde_json::to_string(self).unwrap()
   }
 
-  fn from_content(data: String) -> Self {
+  pub fn from_content(data: String) -> Self {
     serde_json::from_str(&data).unwrap()
   }
 
-  fn from_vec(data: Vec<String>) -> Self {
+  pub fn from_vec(data: Vec<String>) -> Self {
     Self::from(data)
   }
 
-  fn as_vec(&self) -> Vec<String> {
+  pub fn as_vec(&self) -> Vec<String> {
     self.clone().into()
   }
 }

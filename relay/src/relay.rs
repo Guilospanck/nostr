@@ -85,7 +85,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     println!("Event:\n {:?}\n\n", event_msg);
 
     result.is_event = true;
-    result.data.event = event_msg.clone();
+    result.data.event = event_msg;
     return result;
   }
 
@@ -150,12 +150,11 @@ async fn handle_connection(
     if msg_parsed.is_close {
       let closed = on_close_message(msg_parsed.clone().data.close, &mut clients, addr);
       // Send NOTICE event to inform that the subscription was closed or not
-      let mut message = String::new();
-      if closed {
-        message = "Subscription ended.".to_owned();
+      let message = if closed {
+        "Subscription ended.".to_owned()
       } else {
-        message = "Subscription not found.".to_owned();
-      }
+        "Subscription not found.".to_owned()
+      };
       let notice_event = RelayToClientCommNotice {
         message,
         ..Default::default()
@@ -185,7 +184,7 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_event {
-      let event = msg_parsed.data.event.event.clone();
+      let event = msg_parsed.data.event.event;
       let event_stringfied = event.as_str();
 
       let mut mutable_events_db = events_db.lock().unwrap();
