@@ -10,7 +10,7 @@ use crate::{
 use super::check_event_match_filter;
 use super::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientToRelayCommEvent {
   pub code: String, // "EVENT"
   pub event: Event,
@@ -168,6 +168,7 @@ mod tests {
     mock_tx: Tx,
     mock_event: Event,
     mock_filter: Filter,
+    mock_client_event: ClientToRelayCommEvent,
   }
 
   impl EvtSut {
@@ -177,8 +178,10 @@ mod tests {
 
       let mock_filter_id = String::from("05b25af3-4250-4fbf-8ef5-97220858f9ab");
 
+      let mock_event_id = EventId(mock_filter_id.clone());
+
       let mock_filter = Filter {
-        ids: Some(vec![EventId(mock_filter_id.clone())]),
+        ids: Some(vec![mock_event_id.clone()]),
         authors: None,
         kinds: None,
         e: None,
@@ -189,15 +192,20 @@ mod tests {
       };
 
       let mock_client_request = ClientToRelayCommRequest {
-        code: "REQ".to_string(),
+        code: "EVENT".to_string(),
         subscription_id: "mock_subscription_id".to_string(),
         filters: vec![mock_filter.clone()],
       };
 
+      let mock_event = Self::mock_event(mock_filter_id);
+
+      let mock_client_event = ClientToRelayCommEvent {
+        code: "EVENT".to_string(),
+        event: mock_event.clone(),
+      };
+
       let mock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
       let (mock_tx, _rx) = futures_channel::mpsc::unbounded::<Message>();
-
-      let mock_event = Self::mock_event(mock_filter_id);
 
       Self {
         mock_addr,
@@ -206,6 +214,7 @@ mod tests {
         mock_tx,
         mock_event,
         mock_filter,
+        mock_client_event,
       }
     }
 
@@ -261,5 +270,76 @@ mod tests {
     let outbound_client_and_message = on_event_message(mock.mock_event.clone(), &mut clients);
 
     assert_eq!(outbound_client_and_message.len(), 1);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_event_default() {
+    let expected = ClientToRelayCommEvent {
+      code: "EVENT".to_owned(),
+      event: Event::default(),
+    };
+
+    let result = ClientToRelayCommEvent::default();
+
+    assert_eq!(expected, result);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_event_as_str() {
+    let mock = EvtSut::new();
+
+    let event_as_str = mock.mock_event.as_str();
+
+    let expected = format!(r#"["EVENT","{}"]"#, event_as_str);
+
+    assert_eq!(
+      expected,
+      mock
+        .mock_client_event
+        .as_str()
+        .unwrap()
+        .replace("\\\"", "\"")
+    );
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_event_from_str() {
+    let mock = EvtSut::new();
+
+    let expected = "[\"EVENT\",\"{\\\"id\\\":\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\",\\\"pubkey\\\":\\\"\\\",\\\"created_at\\\":0,\\\"kind\\\":1,\\\"tags\\\":[],\\\"content\\\":\\\"\\\",\\\"sig\\\":\\\"\\\"}\"]".to_owned();
+
+    let result = ClientToRelayCommEvent::from_str(expected).unwrap();
+
+    assert_eq!(result, mock.mock_client_event);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_event_from_vec() {
+    let mock = EvtSut::new();
+
+    let expected: Vec<String> = vec![];
+    let expected2: Vec<String> = vec!["EVENT".to_owned()];
+    let expected3: Vec<String> = vec!["EVENT".to_owned(), mock.mock_event.as_str()];
+
+    let result = ClientToRelayCommEvent::from_vec(expected);
+    let result2 = ClientToRelayCommEvent::from_vec(expected2);
+    let result3 = ClientToRelayCommEvent::from_vec(expected3);
+
+    assert_eq!(result, ClientToRelayCommEvent::default());
+    assert_eq!(result2, ClientToRelayCommEvent::default());
+    assert_eq!(result3, mock.mock_client_event);
+  }
+
+  #[test]
+  fn test_client_to_relay_comm_event_as_vec() {
+    let mock = EvtSut::new();
+
+    let default_client_to_relay_event = ClientToRelayCommEvent::default();
+
+    let expected_default: Vec<String> = vec!["EVENT".to_owned(), Event::default().as_str()];
+    let expected: Vec<String> = vec!["EVENT".to_owned(), mock.mock_event.as_str()];
+
+    assert_eq!(expected_default, default_client_to_relay_event.as_vec());
+    assert_eq!(expected, mock.mock_client_event.as_vec());
   }
 }

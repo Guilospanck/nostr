@@ -231,6 +231,18 @@ mod tests {
   }
 
   #[test]
+  fn test_client_to_relay_comm_close_default() {
+    let expected = ClientToRelayCommClose {
+      code: "CLOSE".to_owned(),
+      subscription_id: "".to_owned(),
+    };
+
+    let result = ClientToRelayCommClose::default();
+
+    assert_eq!(expected, result);
+  }
+
+  #[test]
   fn test_client_to_relay_comm_close_as_str() {
     let mock = CloseSut::new();
 
