@@ -89,6 +89,7 @@ async fn handle_connection(
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
   keys: Keys,
 ) {
+  println!("{:?}", keys);
   let url = url::Url::parse(&connect_addr).unwrap();
 
   let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
@@ -114,7 +115,6 @@ async fn handle_connection(
         }
         Err(err) => {
           eprintln!("Error: {}", err);
-          return;
         }
       }
     })
