@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -eu
+
+# Clippy Relay
+if ! cargo clippy --manifest-path ./relay/Cargo.toml --all-targets -- -D warnings
+then
+    echo "There are some clippy issues in Relay package."
+    exit 1
+fi
+
+# Clippy Client
+if ! cargo clippy --manifest-path ./client/Cargo.toml --all-targets -- -D warnings
+then
+    echo "There are some clippy issues in Client package."
+    exit 1
+fi
+
+exit 0
