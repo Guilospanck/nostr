@@ -17,6 +17,7 @@ jobs:
         directories:
           - ./relay
           - ./client
+          - ./nostr-sdk
     steps:
     # Checkout repository
     - name: Checkout repository
@@ -44,6 +45,7 @@ jobs:
         directories:
           - ./relay
           - ./client
+          - ./nostr-sdk
 
     steps:
     - uses: actions/checkout@v2

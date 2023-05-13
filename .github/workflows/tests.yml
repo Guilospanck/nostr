@@ -22,6 +22,7 @@ jobs:
         directories:
           - ./relay
           - ./client
+          - ./nostr-sdk
 
     steps:
     # Checkout repository
