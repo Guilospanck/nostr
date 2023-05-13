@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::MutexGuard, vec};
 
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::{
   event::Event,
@@ -67,17 +67,8 @@ where
     let data: Vec<String> = data.into_iter().map(|v| v.into()).collect();
     let data_len: usize = data.len();
 
-    if data_len == 0 || data_len == 1 {
-      return Ok(Self {
-        ..Default::default()
-      });
-    }
-
-    if data_len == 2 {
-      return Ok(Self {
-        subscription_id: data[1].clone(),
-        ..Default::default()
-      });
+    if data_len < 3 || data[0] != *"REQ" {
+      return Err(Error::InvalidData);
     }
 
     let subscription_id = data[1].clone();
@@ -91,9 +82,9 @@ where
     }
 
     Ok(Self {
+      code: data[0].clone(),
       subscription_id,
       filters,
-      ..Default::default()
     })
   }
 }
@@ -127,7 +118,11 @@ impl<'de> Deserialize<'de> for ClientToRelayCommRequest {
     // a Vec<String>
     let vec: Vec<String> = Data::deserialize(deserializer)?;
     // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommRequest` to retrieve the `ClientToRelayCommRequest` struct
-    Ok(Self::from_vec(vec).unwrap())
+    let result = Self::from_vec(vec);
+    if result.is_err() {
+      return Err(Error::InvalidData).map_err(de::Error::custom)
+    }
+    Ok(result.unwrap())
   }
 }
 
