@@ -16,4 +16,11 @@ then
     exit 1
 fi
 
+# Clippy SDK
+if ! cargo clippy --manifest-path ./nostr-sdk/Cargo.toml --all-targets -- -D warnings
+then
+    echo "There are some clippy issues in SDK package."
+    exit 1
+fi
+
 exit 0
