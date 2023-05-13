@@ -1,4 +1,4 @@
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer, de};
 use std::sync::MutexGuard;
 
 use crate::{
@@ -29,8 +29,8 @@ impl ClientToRelayCommEvent {
     self.clone().into()
   }
 
-  pub fn from_vec(data: Vec<String>) -> Self {
-    Self::from(data)
+  pub fn from_vec(data: Vec<String>) -> Result<Self, Error>  {
+    Self::try_from(data)
   }
 }
 
@@ -49,26 +49,24 @@ impl From<ClientToRelayCommEvent> for Vec<String> {
   }
 }
 
-impl<S> From<Vec<S>> for ClientToRelayCommEvent
+impl<S> TryFrom<Vec<S>> for ClientToRelayCommEvent
 where
   S: Into<String>,
 {
-  fn from(client_to_relay_event: Vec<S>) -> Self {
-    let client_to_relay_event: Vec<String> = client_to_relay_event
-      .into_iter()
-      .map(|v| v.into())
-      .collect();
+  type Error = Error;
 
-    let length = client_to_relay_event.len();
+  fn try_from(data: Vec<S>) -> Result<Self, Self::Error> {
+    let data: Vec<String> = data.into_iter().map(|v| v.into()).collect();
+    let data_len: usize = data.len();
 
-    if length == 0 || length == 1 {
-      return Self::default();
+    if data_len != 2 || data[0] != *"EVENT" {
+      return Err(Error::InvalidData);
     }
 
-    Self {
-      event: Event::from_serialized(&client_to_relay_event[1].clone()),
-      ..Default::default()
-    }
+    Ok(Self {
+      code: data[0].clone(),
+      event: Event::from_serialized(data[1].clone().as_str()),
+    })
   }
 }
 
@@ -101,7 +99,11 @@ impl<'de> Deserialize<'de> for ClientToRelayCommEvent {
     // a Vec<String>
     let vec: Vec<String> = Data::deserialize(deserializer)?;
     // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommEvent` to retrieve the `ClientToRelayCommEvent` struct
-    Ok(Self::from_vec(vec))
+    let result = Self::from_vec(vec);
+    if result.is_err() {
+      return Err(Error::InvalidData).map_err(de::Error::custom)
+    }
+    Ok(result.unwrap())
   }
 }
 
@@ -317,17 +319,17 @@ mod tests {
   fn test_client_to_relay_comm_event_from_vec() {
     let mock = EvtSut::new();
 
-    let expected: Vec<String> = vec![];
+    let expected: Vec<String> = vec!["EVENT".to_owned(), mock.mock_event.as_str()];
     let expected2: Vec<String> = vec!["EVENT".to_owned()];
-    let expected3: Vec<String> = vec!["EVENT".to_owned(), mock.mock_event.as_str()];
+    let expected3: Vec<String> = vec![];
 
-    let result = ClientToRelayCommEvent::from_vec(expected);
+    let result = ClientToRelayCommEvent::from_vec(expected).unwrap();
     let result2 = ClientToRelayCommEvent::from_vec(expected2);
     let result3 = ClientToRelayCommEvent::from_vec(expected3);
 
-    assert_eq!(result, ClientToRelayCommEvent::default());
-    assert_eq!(result2, ClientToRelayCommEvent::default());
-    assert_eq!(result3, mock.mock_client_event);
+    assert_eq!(result, mock.mock_client_event);
+    assert!(result2.is_err());
+    assert!(result3.is_err());
   }
 
   #[test]
