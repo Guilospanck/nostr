@@ -46,14 +46,14 @@ pub struct ClientConnectionInfo {
   pub requests: Vec<ClientRequests>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 struct AnyCommunicationFromClient {
   close: ClientToRelayCommClose,
   event: ClientToRelayCommEvent,
   request: ClientToRelayCommRequest,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 struct MsgResult {
   no_op: bool,
   is_close: bool,
@@ -73,7 +73,7 @@ struct MsgResult {
 fn parse_message_received_from_client(msg: &str) -> MsgResult {
   let mut result = MsgResult::default();
 
-  if let Ok(close_msg) = ClientToRelayCommClose::from_str(msg.to_string()) {
+  if let Ok(close_msg) = ClientToRelayCommClose::from_string(msg.to_string()) {
     println!("Close:\n {:?}\n\n", close_msg);
 
     result.is_close = true;
@@ -81,7 +81,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     return result;
   }
 
-  if let Ok(event_msg) = ClientToRelayCommEvent::from_str(msg.to_string()) {
+  if let Ok(event_msg) = ClientToRelayCommEvent::from_string(msg.to_string()) {
     println!("Event:\n {:?}\n\n", event_msg);
 
     result.is_event = true;
@@ -89,7 +89,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     return result;
   }
 
-  if let Ok(request_msg) = ClientToRelayCommRequest::from_str(msg.to_string()) {
+  if let Ok(request_msg) = ClientToRelayCommRequest::from_string(msg.to_string()) {
     println!("Request:\n {:?}\n\n", request_msg);
 
     result.is_request = true;
@@ -243,23 +243,50 @@ pub async fn initiate_relay() -> Result<(), MainError> {
   let listener = try_socket.expect("Failed to bind");
   println!("Listening on: {}", addr);
 
-  loop {
-    // Asynchronously wait for an inbound TCPStream
-    let (stream, addr) = listener.accept().await.unwrap();
+  // Handle CTRL+C signal
+  let ctrl_c_listener = async {
+    tokio::signal::ctrl_c().await.unwrap();
+    let clients = client_connection_info.lock().unwrap();
+    // close all open connections with clients
+    async {
+      for client in clients.iter() {
+        let notice_event = RelayToClientCommNotice {
+          message: format!("Server {addr} closing connection..."),
+          ..Default::default()
+        }
+        .as_content();
+        send_message_to_client(client.tx.clone(), notice_event);
+        client.tx.close_channel();
+      }
+    }
+    .await;
+    println!("Ctrl-C received, shutting down");
+  };
 
-    // Clone the states we want to be able to mutate
-    // throughout different threads
-    let client_connection_info = Arc::clone(&client_connection_info);
-    let events = Arc::clone(&events);
-    let events_db = Arc::clone(&events_db);
+  // Spin up the server
+  let server = async {
+    while let Ok((stream, addr)) = listener.accept().await {
+      // Clone the states we want to be able to mutate
+      // throughout different threads
+      let client_connection_info = Arc::clone(&client_connection_info);
+      let events = Arc::clone(&events);
+      let events_db = Arc::clone(&events_db);
 
-    // Spawn the handler to run async
-    tokio::spawn(handle_connection(
-      stream,
-      addr,
-      client_connection_info,
-      events,
-      events_db,
-    ));
-  }
+      // Spawn the handler to run async
+      tokio::spawn(handle_connection(
+        stream,
+        addr,
+        client_connection_info,
+        events,
+        events_db,
+      ));
+    }
+  };
+
+  // Pinning the futures is necessary for using `select!`
+  pin_mut!(server, ctrl_c_listener);
+  // Whichever returns first, will end the server
+  future::select(server, ctrl_c_listener).await;
+
+  Ok(())
 }

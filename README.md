@@ -18,10 +18,11 @@
 - [x] [CLIENT/RELAY] Tests!
 - [x] [CLIENT] Change this serialization to transform a vector into a spread of objects (...filter). NEED TO TEST
 - [x] [RELAY] When sending events requested to client, do not send it as a vector.
-- [ ] [RELAY] Add listener to CTRL C.
-- [ ] [RELAY] Verify [`UnboundedSender<Message>`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.UnboundedSender.html) for tips on dealing with closed connection.
-- [ ] [CLIENT] Should sign events properly.
+- [x] [RELAY] Verify [`UnboundedSender<Message>`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.UnboundedSender.html) for tips on dealing with closed connection.
+- [x] [RELAY] Add listener to CTRL C.
 - [ ] [RELAY] Should check event to verify if the signature is valid.
+- [ ] [CLIENT] Should sign events properly.
+- [ ] [CLIENT] When client is sending message, it is alternating between different relays.
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
 - [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own events.

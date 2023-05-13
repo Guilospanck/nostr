@@ -24,8 +24,8 @@ struct Filter {
   pub limit: Option<u64>,
 }
 
-const LIST_OF_RELAYS: [&str; 3] = [
-  "wss://nostr-relay-test.onrender.com",
+const LIST_OF_RELAYS: [&str; 2] = [
+  // "wss://nostr-relay-test.onrender.com",
   "ws://127.0.0.1:8080/",
   "ws://127.0.0.1:8081/",
 ];
