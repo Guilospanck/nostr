@@ -22,3 +22,4 @@ uuid = { version = "1.2.2", features = [
   "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 redb = "0.16.0"
+relay = { path = "../relay" }

@@ -7,27 +7,18 @@ use futures_util::{
 use tokio::io::AsyncReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use relay::client_to_relay_communication::request::ClientToRelayCommRequest;
+use relay::event::id::EventId;
+use relay::filter::Filter;
 
 use crate::db::{get_client_keys, Keys};
 
-#[derive(Debug, Serialize, Default, Deserialize)]
-struct Filter {
-  pub ids: Option<Vec<String>>,
-  pub authors: Option<Vec<String>>,
-  pub kinds: Option<Vec<u64>>,
-  pub e: Option<Vec<String>>,
-  pub p: Option<Vec<String>>,
-  pub since: Option<u64>,
-  pub until: Option<u64>,
-  pub limit: Option<u64>,
-}
-
-const LIST_OF_RELAYS: [&str; 2] = [
+const LIST_OF_RELAYS: [&str; 1] = [
   // "wss://nostr-relay-test.onrender.com",
   "ws://127.0.0.1:8080/",
-  "ws://127.0.0.1:8081/",
+  // "ws://127.0.0.1:8081/",
 ];
 
 // Our helper method which will read data from stdin and send it along the
@@ -53,7 +44,7 @@ async fn send_initial_message(
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
 ) {
   let filters = vec![Filter {
-    ids: Some(["05b25af3-4250-4fbf-8ef5-97220858f9ab".to_owned()].to_vec()),
+    ids: Some([EventId("05b25af3-4250-4fbf-8ef5-97220858f9ab".to_owned())].to_vec()),
     authors: None,
     kinds: None,
     e: None,
@@ -63,7 +54,6 @@ async fn send_initial_message(
     limit: None,
   }];
 
-  let filters_stringfied = serde_json::to_string(&filters).unwrap();
   let subscription_id = Uuid::new_v4().to_string();
 
   let mut subs_id = subscriptions_ids.lock().unwrap();
@@ -73,12 +63,13 @@ async fn send_initial_message(
   // ["REQ","some-random-subs-id",[{"ids":null,"authors":["5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835"],"kinds":null,"#e":null,"#p":null,"since":null,"until":null,"limit":null}]]
   // ["EVENT",{"id":"05b25af3-4250-4fbf-8ef5-97220858f9ab","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
   // ["CLOSE","95e1c438-133d-428d-a849-a307c2e1a005"]
-  let filter_subscription = format!(
-    "[\"{}\",\"{}\",{}]",
-    String::from("REQ"),
+  let filter_subscription = ClientToRelayCommRequest {
+    filters,
     subscription_id,
-    filters_stringfied
-  );
+    ..Default::default()
+  }
+  .as_str()
+  .unwrap();
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes()))
     .unwrap();
@@ -89,11 +80,12 @@ async fn handle_connection(
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
   keys: Keys,
 ) {
-  println!("{:?}", keys);
   let url = url::Url::parse(&connect_addr).unwrap();
 
   let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
   println!("WebSocket handshake has been successfully completed");
+
+  println!("{:?}", keys);
 
   let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
   tokio::spawn(read_stdin(stdin_tx.clone()));
@@ -127,7 +119,6 @@ async fn handle_connection(
 #[tokio::main]
 pub async fn initiate_client() -> Result<(), redb::Error> {
   let keys = get_client_keys()?;
-  println!("{:?}", keys);
 
   let subscriptions_ids = Arc::new(Mutex::new(Vec::<String>::new()));
 
