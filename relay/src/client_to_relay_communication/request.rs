@@ -23,7 +23,7 @@ impl ClientToRelayCommRequest {
     serde_json::to_string(self).map_err(Error::Json)
   }
 
-  pub fn from_str(data: String) -> Result<Self, Error> {
+  pub fn from_string(data: String) -> Result<Self, Error> {
     serde_json::from_str(&data).map_err(Error::Json)
   }
 
@@ -84,7 +84,7 @@ where
     let mut filters: Vec<Filter> = vec![];
 
     for filter in data[2..].iter() {
-      match Filter::from_str(filter.clone()) {
+      match Filter::from_string(filter.clone()) {
         Ok(filter) => filters.push(filter),
         Err(e) => return Err(Error::Json(e)),
       }
@@ -518,8 +518,8 @@ mod tests {
     let expected = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
     let expected2 = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
 
-    let result = ClientToRelayCommRequest::from_str(expected).unwrap();
-    let result2 = ClientToRelayCommRequest::from_str(expected2).unwrap();
+    let result = ClientToRelayCommRequest::from_string(expected).unwrap();
+    let result2 = ClientToRelayCommRequest::from_string(expected2).unwrap();
 
     assert_eq!(result, mock.mock_client_request);
     assert_eq!(result2, client_request_for_expectation_2);

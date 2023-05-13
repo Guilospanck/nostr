@@ -116,7 +116,7 @@ impl Tag {
     serde_json::to_string(self).unwrap()
   }
 
-  pub fn from_str(data: String) -> Self {
+  pub fn from_string(data: String) -> Self {
     serde_json::from_str(&data).unwrap()
   }
 
@@ -331,7 +331,7 @@ mod tests {
     assert_eq!(generic.as_str(), expected_generic);
 
     // Generic - deserialization
-    assert_eq!(Tag::from_str(expected_generic), generic);
+    assert_eq!(Tag::from_string(expected_generic), generic);
 
     // Pubkey - serialization
     let (pubkey_without_recommended_relay, expected_pubkey_without_recommended_relay, _) =
@@ -345,10 +345,10 @@ mod tests {
 
     // Pubkey - deserialization
     assert_eq!(
-      Tag::from_str(expected_pubkey_without_recommended_relay),
+      Tag::from_string(expected_pubkey_without_recommended_relay),
       pubkey_without_recommended_relay
     );
-    assert_eq!(Tag::from_str(expected_pubkey_complete), pubkey_complete);
+    assert_eq!(Tag::from_string(expected_pubkey_complete), pubkey_complete);
 
     // Event - serialization
     let (
@@ -380,18 +380,18 @@ mod tests {
 
     // Event - deserialization
     assert_eq!(
-      Tag::from_str(expected_event_without_recommended_relay_and_marker),
+      Tag::from_string(expected_event_without_recommended_relay_and_marker),
       event_without_recommended_relay_and_marker
     );
     assert_eq!(
-      Tag::from_str(expected_event_complete_without_marker),
+      Tag::from_string(expected_event_complete_without_marker),
       event_complete_without_marker
     );
     assert_eq!(
-      Tag::from_str(expected_event_complete_without_recommended_relay),
+      Tag::from_string(expected_event_complete_without_recommended_relay),
       event_complete_without_recommended_relay
     );
-    assert_eq!(Tag::from_str(expected_event_complete), event_complete);
+    assert_eq!(Tag::from_string(expected_event_complete), event_complete);
   }
 
   #[test]

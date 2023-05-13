@@ -21,7 +21,7 @@ impl ClientToRelayCommEvent {
     serde_json::to_string(self).map_err(Error::Json)
   }
 
-  pub fn from_str(data: String) -> Result<Self, Error> {
+  pub fn from_string(data: String) -> Result<Self, Error> {
     serde_json::from_str(&data).map_err(Error::Json)
   }
 
@@ -308,7 +308,7 @@ mod tests {
 
     let expected = "[\"EVENT\",\"{\\\"id\\\":\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\",\\\"pubkey\\\":\\\"\\\",\\\"created_at\\\":0,\\\"kind\\\":1,\\\"tags\\\":[],\\\"content\\\":\\\"\\\",\\\"sig\\\":\\\"\\\"}\"]".to_owned();
 
-    let result = ClientToRelayCommEvent::from_str(expected).unwrap();
+    let result = ClientToRelayCommEvent::from_string(expected).unwrap();
 
     assert_eq!(result, mock.mock_client_event);
   }

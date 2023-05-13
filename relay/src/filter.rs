@@ -38,7 +38,7 @@ impl Filter {
     serde_json::to_string(self).unwrap()
   }
 
-  pub fn from_str(data: String) -> Result<Self, serde_json::error::Error> {
+  pub fn from_string(data: String) -> Result<Self, serde_json::error::Error> {
     serde_json::from_str(&data)
   }
 }
