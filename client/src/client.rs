@@ -1,8 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use futures_util::{
-  future::{self, join_all},
-  pin_mut, StreamExt,
+  future,
+  pin_mut,
+  stream::FuturesUnordered,
+  StreamExt,
 };
 use tokio::io::AsyncReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -15,10 +17,10 @@ use relay::filter::Filter;
 
 use crate::db::{get_client_keys, Keys};
 
-const LIST_OF_RELAYS: [&str; 1] = [
+const LIST_OF_RELAYS: [&str; 2] = [
   // "wss://nostr-relay-test.onrender.com",
   "ws://127.0.0.1:8080/",
-  // "ws://127.0.0.1:8081/",
+  "ws://127.0.0.1:8081/",
 ];
 
 // Our helper method which will read data from stdin and send it along the
@@ -134,7 +136,9 @@ pub async fn initiate_client() -> Result<(), redb::Error> {
     })
     .collect();
 
-  join_all(connections).await;
+  let futures: FuturesUnordered<_> = connections.into_iter().collect();
+
+  let _: Vec<_> = futures.collect().await;
 
   Ok(())
 }
