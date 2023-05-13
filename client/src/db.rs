@@ -2,7 +2,7 @@ use std::fs;
 
 use redb::{Database, ReadableTable, TableDefinition, TableHandle};
 
-use crate::schnorr;
+use nostr_sdk::schnorr;
 
 const TABLE: TableDefinition<&str, &str> = TableDefinition::new("keys");
 

@@ -1,7 +1,7 @@
 use std::fs;
 use redb::{Database, ReadableTable, TableDefinition, WriteTransaction};
 
-use crate::event::Event;
+use nostr_sdk::event::Event;
 
 pub struct EventsDB<'a> {
   table: TableDefinition<'a, u64, &'static str>,

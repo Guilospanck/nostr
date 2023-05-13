@@ -38,7 +38,7 @@ impl serde::de::Error for Error {
   }
 }
 
-fn check_event_match_filter(event: Event, filter: Filter) -> bool {
+pub fn check_event_match_filter(event: Event, filter: Filter) -> bool {
   // Check IDs
   if let Some(ids) = filter.ids {
     let id_in_list = ids

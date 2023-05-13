@@ -11,9 +11,9 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use uuid::Uuid;
 
-use relay::client_to_relay_communication::request::ClientToRelayCommRequest;
-use relay::event::id::EventId;
-use relay::filter::Filter;
+use nostr_sdk::client_to_relay_communication::request::ClientToRelayCommRequest;
+use nostr_sdk::event::id::EventId;
+use nostr_sdk::filter::Filter;
 
 use crate::db::{get_client_keys, Keys};
 

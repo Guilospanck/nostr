@@ -11,19 +11,21 @@ use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::{
+use nostr_sdk::{
   client_to_relay_communication::{
-    close::{on_close_message, ClientToRelayCommClose},
-    event::{on_event_message, ClientToRelayCommEvent},
-    request::{on_request_message, ClientToRelayCommRequest},
+    close::ClientToRelayCommClose, event::ClientToRelayCommEvent, request::ClientToRelayCommRequest,
   },
-  db::EventsDB,
   event::Event,
   filter::Filter,
-  relay_to_client_communication::{
-    broadcast_message_to_clients, eose::RelayToClientCommEose, notice::RelayToClientCommNotice,
-    send_message_to_client,
+  relay_to_client_communication::{eose::RelayToClientCommEose, notice::RelayToClientCommNotice},
+};
+
+use crate::{
+  db::EventsDB,
+  receive_from_client::{
+    close::on_close_message, event::on_event_message, request::on_request_message,
   },
+  send_to_client::{broadcast_message_to_clients, send_message_to_client},
 };
 
 pub type Tx = UnboundedSender<Message>;
@@ -148,7 +150,7 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_close {
-      let closed = on_close_message(msg_parsed.clone().data.close, &mut clients, addr);
+      let closed = on_close_message(msg_parsed.clone().data.close.subscription_id, &mut clients, addr);
       // Send NOTICE event to inform that the subscription was closed or not
       let message = if closed {
         "Subscription ended.".to_owned()
@@ -165,7 +167,8 @@ async fn handle_connection(
 
     if msg_parsed.is_request {
       let events_to_send_to_client = on_request_message(
-        msg_parsed.clone().data.request,
+        msg_parsed.clone().data.request.subscription_id,
+        msg_parsed.clone().data.request.filters,
         &mut clients,
         addr,
         tx.clone(),
