@@ -1,4 +1,4 @@
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer, de};
 use std::{net::SocketAddr, sync::MutexGuard};
 
 use crate::relay::ClientConnectionInfo;
@@ -16,7 +16,7 @@ impl ClientToRelayCommClose {
     serde_json::to_string(self).map_err(Error::Json)
   }
 
-  pub fn from_str(data: String) -> Result<Self, Error> {
+  pub fn from_string(data: String) -> Result<Self, Error> {
     serde_json::from_str(&data).map_err(Error::Json)
   }
 
@@ -24,8 +24,8 @@ impl ClientToRelayCommClose {
     self.clone().into()
   }
 
-  pub fn from_vec(data: Vec<String>) -> Self {
-    Self::from(data)
+  pub fn from_vec(data: Vec<String>) -> Result<Self, Error> {
+    Self::try_from(data)
   }
 }
 
@@ -38,22 +38,24 @@ impl Default for ClientToRelayCommClose {
   }
 }
 
-impl<S> From<Vec<S>> for ClientToRelayCommClose
+impl<S> TryFrom<Vec<S>> for ClientToRelayCommClose
 where
   S: Into<String>,
 {
-  fn from(value: Vec<S>) -> Self {
-    let value: Vec<String> = value.into_iter().map(|v| v.into()).collect();
-    let length = value.len();
+  type Error = Error;
 
-    if length == 0 || length == 1 {
-      return Self::default();
+  fn try_from(data: Vec<S>) -> Result<Self, Self::Error> {
+    let data: Vec<String> = data.into_iter().map(|v| v.into()).collect();
+    let data_len: usize = data.len();
+
+    if data_len != 2 || data[0] != *"CLOSE" {
+      return Err(Error::InvalidData);
     }
 
-    Self {
-      code: String::from("CLOSE"),
-      subscription_id: value[1].clone(),
-    }
+    Ok(Self {
+      code: data[0].clone(),
+      subscription_id: data[1].clone(),
+    })
   }
 }
 
@@ -92,7 +94,12 @@ impl<'de> Deserialize<'de> for ClientToRelayCommClose {
     // a Vec<String>
     let vec: Vec<String> = Data::deserialize(deserializer)?;
     // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommClose` to retrieve the `ClientToRelayCommClose` struct
-    Ok(Self::from_vec(vec))
+    let result = Self::from_vec(vec);
+    if result.is_err() {
+      return Err(Error::InvalidData).map_err(de::Error::custom);
+    }
+
+    Ok(result.unwrap())
   }
 }
 
@@ -265,19 +272,19 @@ mod tests {
     let expected4 = "[\"\"]".to_owned();
     let expected5 = "[]".to_owned();
 
-    let result = ClientToRelayCommClose::from_str(expected).unwrap();
-    let result2 = ClientToRelayCommClose::from_str(expected2).unwrap();
-    let result3 = ClientToRelayCommClose::from_str(expected3).unwrap();
-    let result4 = ClientToRelayCommClose::from_str(expected4).unwrap();
-    let result5 = ClientToRelayCommClose::from_str(expected5).unwrap();
+    let result = ClientToRelayCommClose::from_string(expected).unwrap();
+    let result2 = ClientToRelayCommClose::from_string(expected2).unwrap();
+    let result3 = ClientToRelayCommClose::from_string(expected3);
+    let result4 = ClientToRelayCommClose::from_string(expected4);
+    let result5 = ClientToRelayCommClose::from_string(expected5);
 
     let client_close2 = ClientToRelayCommClose::default();
 
     assert_eq!(result, mock.mock_client_close);
     assert_eq!(result2, client_close2);
-    assert_eq!(result3, client_close2);
-    assert_eq!(result4, client_close2);
-    assert_eq!(result5, client_close2);
+    assert!(result3.is_err());
+    assert!(result4.is_err());
+    assert!(result5.is_err());
   }
 
   #[test]
@@ -290,8 +297,8 @@ mod tests {
     let expected4: Vec<String> = vec!["".to_owned()];
     let expected5: Vec<String> = vec![];
 
-    let result = ClientToRelayCommClose::from_vec(expected);
-    let result2 = ClientToRelayCommClose::from_vec(expected2);
+    let result = ClientToRelayCommClose::from_vec(expected).unwrap();
+    let result2 = ClientToRelayCommClose::from_vec(expected2).unwrap();
     let result3 = ClientToRelayCommClose::from_vec(expected3);
     let result4 = ClientToRelayCommClose::from_vec(expected4);
     let result5 = ClientToRelayCommClose::from_vec(expected5);
@@ -300,9 +307,9 @@ mod tests {
 
     assert_eq!(result, mock.mock_client_close);
     assert_eq!(result2, default_client_close);
-    assert_eq!(result3, default_client_close);
-    assert_eq!(result4, default_client_close);
-    assert_eq!(result5, default_client_close);
+    assert!(result3.is_err());
+    assert!(result4.is_err());
+    assert!(result5.is_err());
   }
 
   #[test]

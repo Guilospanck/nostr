@@ -28,6 +28,14 @@ pub enum Error {
   /// Error serializing or deserializing JSON data
   #[error(transparent)]
   Json(#[from] serde_json::Error),
+  #[error("Invalid data")]
+  InvalidData
+}
+
+impl serde::de::Error for Error {
+  fn custom<T>(_msg:T) -> Self where T:std::fmt::Display {
+      Self::InvalidData
+  }
 }
 
 fn check_event_match_filter(event: Event, filter: Filter) -> bool {
