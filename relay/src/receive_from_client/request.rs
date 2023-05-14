@@ -71,11 +71,19 @@ pub fn on_request_message(
     events_added_for_this_filter
       .sort_by(|event1, event2| event2.event.created_at.cmp(&event1.event.created_at));
 
-    // Check limit of the filter as the REQ message will only be called on the first time something is required.
-    if let Some(limit) = filter.limit {
-      // Get up to the limit of the filter
-      let slice = &events_added_for_this_filter.clone()[..limit as usize];
-      events_added_for_this_filter = slice.to_vec();
+    let events_added_length = events_added_for_this_filter.len();
+    if events_added_length != 0 {
+      // Check limit of the filter as the REQ message will only be called on the first time something is required.
+      if let Some(limit) = filter.limit {
+        let limit: usize = if (limit as usize) < events_added_length {
+          limit as usize
+        } else {
+          events_added_length - 1
+        };
+        // Get up to the limit of the filter
+        let slice = &events_added_for_this_filter.clone()[..limit];
+        events_added_for_this_filter = slice.to_vec();
+      }
     }
     events_to_send_to_client_that_match_the_requested_filter.extend(events_added_for_this_filter);
   }
