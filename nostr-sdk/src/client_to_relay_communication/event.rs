@@ -19,26 +19,6 @@ impl ClientToRelayCommEvent {
     }
   }
 
-  /// Get event communication as JSON string
-  pub fn as_json(&self) -> String {
-    self.as_value().to_string()
-  }
-
-  /// Deserialize [`ClientToRelayCommEvent`] from JSON string
-  pub fn from_json<S>(msg: S) -> Result<Self, Error>
-  where
-    S: Into<String>,
-  {
-    let msg: &str = &msg.into();
-
-    if msg.is_empty() {
-      return Err(Error::InvalidData);
-    }
-
-    let value: Value = serde_json::from_str(msg)?;
-    Self::from_value(value)
-  }
-
   /// Serialize as [`Value`]
   pub fn as_value(&self) -> Value {
     json!(["EVENT", self.event])
@@ -63,6 +43,27 @@ impl ClientToRelayCommEvent {
     let event: Event = serde_json::from_value(v[1].clone())?;
     Ok(Self::new_event(event))
   }
+  
+  /// Get event communication as JSON string
+  pub fn as_json(&self) -> String {
+    self.as_value().to_string()
+  }
+
+  /// Deserialize [`ClientToRelayCommEvent`] from JSON string
+  pub fn from_json<S>(msg: S) -> Result<Self, Error>
+  where
+    S: Into<String>,
+  {
+    let msg: &str = &msg.into();
+
+    if msg.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let value: Value = serde_json::from_str(msg)?;
+    Self::from_value(value)
+  }
+
 }
 
 impl Default for ClientToRelayCommEvent {

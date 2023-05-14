@@ -77,7 +77,7 @@ struct MsgResult {
 fn parse_message_received_from_client(msg: &str) -> MsgResult {
   let mut result = MsgResult::default();
 
-  if let Ok(close_msg) = ClientToRelayCommClose::from_string(msg.to_string()) {
+  if let Ok(close_msg) = ClientToRelayCommClose::from_json(msg.to_string()) {
     println!("Close:\n {:?}\n\n", close_msg);
 
     result.is_close = true;

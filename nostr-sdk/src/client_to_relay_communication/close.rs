@@ -1,4 +1,5 @@
-use serde::{de, ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{json, Value};
 
 use super::Error;
 
@@ -9,20 +10,56 @@ pub struct ClientToRelayCommClose {
 }
 
 impl ClientToRelayCommClose {
-  pub fn as_str(&self) -> Result<String, Error> {
-    serde_json::to_string(self).map_err(Error::Json)
+  pub fn new_close(subscription_id: String) -> Self {
+    Self {
+      code: "CLOSE".to_string(),
+      subscription_id,
+    }
   }
 
-  pub fn from_string(data: String) -> Result<Self, Error> {
-    serde_json::from_str(&data).map_err(Error::Json)
+  /// Serialize as [`Value`]
+  pub fn as_value(&self) -> Value {
+    json!(["CLOSE", self.subscription_id])
   }
 
-  pub fn as_vec(&self) -> Vec<String> {
-    self.clone().into()
+  /// Deserialize from [`Value`]
+  pub fn from_value(msg: Value) -> Result<Self, Error> {
+    let v = msg.as_array().ok_or(Error::InvalidData)?;
+
+    if v.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let v_len: usize = v.len();
+
+    // Close
+    // ["CLOSE", subscription_id]
+    if v[0] != "CLOSE" || v_len != 2 {
+      return Err(Error::InvalidData);
+    }
+    
+    let subscription_id = serde_json::from_value(v[1].clone())?;
+    Ok(Self::new_close(subscription_id))
   }
 
-  pub fn from_vec(data: Vec<String>) -> Result<Self, Error> {
-    Self::try_from(data)
+  /// Get [`ClientToRelayCommClose`] as JSON string
+  pub fn as_json(&self) -> String {
+    self.as_value().to_string()
+  }
+
+  /// Deserialize [`ClientToRelayCommClose`] from JSON string
+  pub fn from_json<S>(msg: S) -> Result<Self, Error>
+  where
+    S: Into<String>,
+  {
+    let msg: &str = &msg.into();
+
+    if msg.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let value: Value = serde_json::from_str(msg)?;
+    Self::from_value(value)
   }
 }
 
@@ -35,49 +72,13 @@ impl Default for ClientToRelayCommClose {
   }
 }
 
-impl<S> TryFrom<Vec<S>> for ClientToRelayCommClose
-where
-  S: Into<String>,
-{
-  type Error = Error;
-
-  fn try_from(data: Vec<S>) -> Result<Self, Self::Error> {
-    let data: Vec<String> = data.into_iter().map(|v| v.into()).collect();
-    let data_len: usize = data.len();
-
-    if data_len != 2 || data[0] != *"CLOSE" {
-      return Err(Error::InvalidData);
-    }
-
-    Ok(Self {
-      code: data[0].clone(),
-      subscription_id: data[1].clone(),
-    })
-  }
-}
-
-impl From<ClientToRelayCommClose> for Vec<String> {
-  fn from(value: ClientToRelayCommClose) -> Self {
-    vec![value.code, value.subscription_id]
-  }
-}
-
 impl Serialize for ClientToRelayCommClose {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    // using the `impl From<ClientToRelayCommClose> for Vec<String>`
-    let data: Vec<String> = self.as_vec();
-    // A Vec<_> is a sequence, therefore we must tell the
-    // deserializer how long is the sequence (vector's length)
-    let mut seq = serializer.serialize_seq(Some(data.len()))?;
-    // Serialize each element of the Vector
-    for element in data.into_iter() {
-      seq.serialize_element(&element)?;
-    }
-    // Finalize the serialization and return the result
-    seq.end()
+    let json_value: Value = self.as_value();
+    json_value.serialize(serializer)
   }
 }
 
@@ -86,17 +87,14 @@ impl<'de> Deserialize<'de> for ClientToRelayCommClose {
   where
     D: Deserializer<'de>,
   {
-    type Data = Vec<String>;
-    // Deserializes a string (serialized) into
-    // a Vec<String>
-    let vec: Vec<String> = Data::deserialize(deserializer)?;
-    // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommClose` to retrieve the `ClientToRelayCommClose` struct
-    let result = Self::from_vec(vec);
-    if result.is_err() {
-      return Err(Error::InvalidData).map_err(de::Error::custom);
-    }
+    // As it usually happens with deserialization, first we need to deserialize it
+    // to something that we know how to deal with. In this case, we know how to
+    // deal with "Value" types. Therefore, we use its deserializer.
+    let json_value: Value = Value::deserialize(deserializer)?;
 
-    Ok(result.unwrap())
+    // Now that we have the "Value", we can verify if it abides in the structure
+    // we are working on, namely `ClientToRelayCommClose`
+    ClientToRelayCommClose::from_value(json_value).map_err(serde::de::Error::custom)
   }
 }
 
@@ -137,7 +135,7 @@ mod tests {
   }
 
   #[test]
-  fn test_client_to_relay_comm_close_as_str() {
+  fn test_client_to_relay_comm_close_as_json() {
     let mock = CloseSut::new();
 
     let client_close2 = ClientToRelayCommClose::default();
@@ -145,25 +143,25 @@ mod tests {
     let expected = r#"["CLOSE","mock_subscription_id"]"#.to_owned();
     let expected2 = r#"["CLOSE",""]"#.to_owned();
 
-    assert_eq!(expected, mock.mock_client_close.as_str().unwrap());
-    assert_eq!(expected2, client_close2.as_str().unwrap());
+    assert_eq!(expected, mock.mock_client_close.as_json());
+    assert_eq!(expected2, client_close2.as_json());
   }
 
   #[test]
-  fn test_client_to_relay_comm_close_from_str() {
+  fn test_client_to_relay_comm_close_from_json() {
     let mock = CloseSut::new();
 
-    let expected = "[\"CLOSE\",\"mock_subscription_id\"]".to_owned();
-    let expected2 = "[\"CLOSE\",\"\"]".to_owned();
-    let expected3 = "[\"\",\"\"]".to_owned();
-    let expected4 = "[\"\"]".to_owned();
-    let expected5 = "[]".to_owned();
+    let from_json = json!(["CLOSE", "mock_subscription_id"]).to_string();
+    let from_json2 = json!(["CLOSE", ""]).to_string();
+    let from_json3 = json!(["", ""]).to_string();
+    let from_json4 = json!([""]).to_string();
+    let from_json5 = json!([]).to_string();
 
-    let result = ClientToRelayCommClose::from_string(expected).unwrap();
-    let result2 = ClientToRelayCommClose::from_string(expected2).unwrap();
-    let result3 = ClientToRelayCommClose::from_string(expected3);
-    let result4 = ClientToRelayCommClose::from_string(expected4);
-    let result5 = ClientToRelayCommClose::from_string(expected5);
+    let result = ClientToRelayCommClose::from_json(from_json).unwrap();
+    let result2 = ClientToRelayCommClose::from_json(from_json2).unwrap();
+    let result3 = ClientToRelayCommClose::from_json(from_json3);
+    let result4 = ClientToRelayCommClose::from_json(from_json4);
+    let result5 = ClientToRelayCommClose::from_json(from_json5);
 
     let client_close2 = ClientToRelayCommClose::default();
 
@@ -174,41 +172,4 @@ mod tests {
     assert!(result5.is_err());
   }
 
-  #[test]
-  fn test_client_to_relay_comm_close_from_vec() {
-    let mock = CloseSut::new();
-
-    let expected: Vec<String> = vec!["CLOSE".to_owned(), "mock_subscription_id".to_owned()];
-    let expected2: Vec<String> = vec!["CLOSE".to_owned(), "".to_owned()];
-    let expected3: Vec<String> = vec!["CLOSE".to_owned()];
-    let expected4: Vec<String> = vec!["".to_owned()];
-    let expected5: Vec<String> = vec![];
-
-    let result = ClientToRelayCommClose::from_vec(expected).unwrap();
-    let result2 = ClientToRelayCommClose::from_vec(expected2).unwrap();
-    let result3 = ClientToRelayCommClose::from_vec(expected3);
-    let result4 = ClientToRelayCommClose::from_vec(expected4);
-    let result5 = ClientToRelayCommClose::from_vec(expected5);
-
-    let default_client_close = ClientToRelayCommClose::default();
-
-    assert_eq!(result, mock.mock_client_close);
-    assert_eq!(result2, default_client_close);
-    assert!(result3.is_err());
-    assert!(result4.is_err());
-    assert!(result5.is_err());
-  }
-
-  #[test]
-  fn test_client_to_relay_comm_close_as_vec() {
-    let mock = CloseSut::new();
-
-    let expected: Vec<String> = vec!["CLOSE".to_owned(), "mock_subscription_id".to_owned()];
-    let expected2: Vec<String> = vec!["CLOSE".to_owned(), "".to_owned()];
-
-    let default_client_close = ClientToRelayCommClose::default();
-
-    assert_eq!(expected, mock.mock_client_close.as_vec());
-    assert_eq!(expected2, default_client_close.as_vec());
-  }
 }
