@@ -8,7 +8,7 @@
       "name": "Debug Relay",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/relay/target/debug/main",
+      "program": "${workspaceFolder}/relay/target/debug/relay",
       "args": [],
       "cwd": "${workspaceFolder}/relay",
       "preLaunchTask": "rust: cargo build --relay",
