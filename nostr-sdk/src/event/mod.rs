@@ -54,6 +54,31 @@ pub struct Event {
 }
 
 impl Event {
+  pub fn new_without_signature(
+    pubkey: PubKey,
+    created_at: Timestamp,
+    kind: EventKind,
+    tags: Vec<Tag>,
+    content: String,
+  ) -> Self {
+    let id = EventId::new(
+      pubkey.clone(),
+      created_at,
+      kind,
+      tags.clone(),
+      content.clone(),
+    );
+    Self {
+      id: id.0,
+      pubkey,
+      created_at,
+      kind,
+      tags,
+      content,
+      ..Default::default()
+    }
+  }
+
   pub fn from_serialized(data: &str) -> Self {
     serde_json::from_str::<Self>(data).unwrap()
   }
