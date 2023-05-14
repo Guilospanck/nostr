@@ -5,7 +5,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use futures_channel::mpsc::{unbounded, UnboundedSender};
+use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
 use tokio::net::{TcpListener, TcpStream};
@@ -129,7 +129,7 @@ async fn handle_connection(
     .expect("Error during the websocket handshake occurred");
   println!("WebSocket connection established: {}", addr);
 
-  let (tx, rx) = unbounded();
+  let (tx, rx) = futures_channel::mpsc::unbounded();
 
   let (outgoing, incoming) = ws_stream.split();
 
@@ -150,7 +150,11 @@ async fn handle_connection(
     }
 
     if msg_parsed.is_close {
-      let closed = on_close_message(msg_parsed.clone().data.close.subscription_id, &mut clients, addr);
+      let closed = on_close_message(
+        msg_parsed.clone().data.close.subscription_id,
+        &mut clients,
+        addr,
+      );
       // Send NOTICE event to inform that the subscription was closed or not
       let message = if closed {
         "Subscription ended.".to_owned()

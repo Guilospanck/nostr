@@ -6,9 +6,14 @@ use secp256k1::{
   XOnlyPublicKey,
 };
 
+pub struct AsymmetricKeys {
+  pub private_key: SecretKey,
+  pub public_key: PublicKey,
+}
+
 ///
 /// Signs an ECDSA signature for a determined content.
-/// 
+///
 /// If the process of signing happens correctly, returns the `Signature` created.
 /// Otherwise, returns an `Error` with an error message.
 ///
@@ -25,7 +30,7 @@ fn sign_ecdsa<C: Signing>(
 
 ///
 /// Verifies an ECDSA signature for a determined content.
-/// 
+///
 /// If the signature is verified correctly, returns an `Ok(true)`.
 /// Otherwise, `panics` with an error message.
 ///
@@ -48,7 +53,7 @@ fn verify_ecdsa<C: Verification>(
 
 ///
 /// Signs a Schnorr signature for a determined content.
-/// 
+///
 /// If the process of signing happens correctly, returns the `Signature` created.
 /// Otherwise, returns an `Error` with an error message.
 ///
@@ -66,10 +71,10 @@ fn sign_schnorr<C: Signing>(
 
 ///
 /// Verifies a Schnorr signature for a determined content.
-/// 
+///
 /// If the signature is verified correctly, returns an `Ok(true)`.
 /// Otherwise, `panics` with an error message.
-/// 
+///
 fn verify_schnorr<C: Verification>(
   secp: &Secp256k1<C>,
   msg: &[u8],
@@ -89,21 +94,24 @@ fn verify_schnorr<C: Verification>(
 ///
 /// Generates random keypairs (private and public keys) that
 /// can be used for both Schnorr and ECDSA signatures.
-/// 
-pub fn generate_keys() -> (SecretKey, PublicKey) {
+///
+pub fn generate_keys() -> AsymmetricKeys {
   let secp = Secp256k1::new();
   let mut rng = rand::thread_rng();
 
   let (seckey, pubkey) = secp.generate_keypair(&mut rng);
   assert_eq!(pubkey, PublicKey::from_secret_key(&secp, &seckey));
 
-  (seckey, pubkey)
+  AsymmetricKeys {
+    public_key: pubkey,
+    private_key: seckey,
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use bitcoin_hashes::hex::ToHex;
-use secp256k1::All;
+  use secp256k1::All;
 
   use super::*;
 
