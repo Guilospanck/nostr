@@ -1,4 +1,5 @@
-use serde::{de, ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{json, Value};
 
 use crate::event::Event;
 
@@ -11,20 +12,56 @@ pub struct ClientToRelayCommEvent {
 }
 
 impl ClientToRelayCommEvent {
-  pub fn as_str(&self) -> Result<String, Error> {
-    serde_json::to_string(self).map_err(Error::Json)
+  pub fn new_event(event: Event) -> Self {
+    Self {
+      code: "EVENT".to_string(),
+      event,
+    }
   }
 
-  pub fn from_string(data: String) -> Result<Self, Error> {
-    serde_json::from_str(&data).map_err(Error::Json)
+  /// Get event communication as JSON string
+  pub fn as_json(&self) -> String {
+    self.as_value().to_string()
   }
 
-  pub fn as_vec(&self) -> Vec<String> {
-    self.clone().into()
+  /// Deserialize [`ClientToRelayCommEvent`] from JSON string
+  pub fn from_json<S>(msg: S) -> Result<Self, Error>
+  where
+    S: Into<String>,
+  {
+    let msg: &str = &msg.into();
+
+    if msg.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let value: Value = serde_json::from_str(msg)?;
+    Self::from_value(value)
   }
 
-  pub fn from_vec(data: Vec<String>) -> Result<Self, Error> {
-    Self::try_from(data)
+  /// Serialize as [`Value`]
+  pub fn as_value(&self) -> Value {
+    json!(["EVENT", self.event])
+  }
+
+  /// Deserialize from [`Value`]
+  pub fn from_value(msg: Value) -> Result<Self, Error> {
+    let v = msg.as_array().ok_or(Error::InvalidData)?;
+
+    if v.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let v_len: usize = v.len();
+
+    // Event
+    // ["EVENT", <event JSON>]
+    if v[0] != "EVENT" || v_len != 2 {
+      return Err(Error::InvalidData);
+    }
+
+    let event: Event = serde_json::from_value(v[1].clone())?;
+    Ok(Self::new_event(event))
   }
 }
 
@@ -37,49 +74,13 @@ impl Default for ClientToRelayCommEvent {
   }
 }
 
-impl From<ClientToRelayCommEvent> for Vec<String> {
-  fn from(data: ClientToRelayCommEvent) -> Self {
-    vec![data.code, data.event.as_str()]
-  }
-}
-
-impl<S> TryFrom<Vec<S>> for ClientToRelayCommEvent
-where
-  S: Into<String>,
-{
-  type Error = Error;
-
-  fn try_from(data: Vec<S>) -> Result<Self, Self::Error> {
-    let data: Vec<String> = data.into_iter().map(|v| v.into()).collect();
-    let data_len: usize = data.len();
-
-    if data_len != 2 || data[0] != *"EVENT" {
-      return Err(Error::InvalidData);
-    }
-
-    Ok(Self {
-      code: data[0].clone(),
-      event: Event::from_serialized(data[1].clone().as_str()),
-    })
-  }
-}
-
 impl Serialize for ClientToRelayCommEvent {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    // using the `impl From<ClientToRelayCommEvent> for Vec<String>`
-    let data: Vec<String> = self.as_vec();
-    // A Vec<_> is a sequence, therefore we must tell the
-    // deserializer how long is the sequence (vector's length)
-    let mut seq = serializer.serialize_seq(Some(data.len()))?;
-    // Serialize each element of the Vector
-    for element in data.into_iter() {
-      seq.serialize_element(&element)?;
-    }
-    // Finalize the serialization and return the result
-    seq.end()
+    let json_value: Value = self.as_value();
+    json_value.serialize(serializer)
   }
 }
 
@@ -88,16 +89,13 @@ impl<'de> Deserialize<'de> for ClientToRelayCommEvent {
   where
     D: Deserializer<'de>,
   {
-    type Data = Vec<String>;
-    // Deserializes a string (serialized) into
-    // a Vec<String>
-    let vec: Vec<String> = Data::deserialize(deserializer)?;
-    // Then it uses the `impl<S> From<Vec<S>> for ClientToRelayCommEvent` to retrieve the `ClientToRelayCommEvent` struct
-    let result = Self::from_vec(vec);
-    if result.is_err() {
-      return Err(Error::InvalidData).map_err(de::Error::custom);
-    }
-    Ok(result.unwrap())
+    // We don't know what we're receiving. So just try to deserialize it
+    // to some value
+    let json_value: Value = Value::deserialize(deserializer)?;
+
+    // If the deserialization happens correctly (i.e.: is a valid JSON),
+    // We verify if this JSON is the one we want, namely `ClientToRelayCommEvent`
+    ClientToRelayCommEvent::from_value(json_value).map_err(serde::de::Error::custom)
   }
 }
 
@@ -151,61 +149,28 @@ mod tests {
   }
 
   #[test]
-  fn test_client_to_relay_comm_event_as_str() {
+  fn test_client_to_relay_comm_event_as_json() {
     let mock = EvtSut::new();
 
-    let event_as_str = mock.mock_event.as_str();
+    let event_as_str = mock.mock_event.as_json();
+    let expected =
+      ClientToRelayCommEvent::from_json(format!(r#"["EVENT",{}]"#, event_as_str)).unwrap();
 
-    let expected = format!(r#"["EVENT","{}"]"#, event_as_str);
+    let result_as_json = mock.mock_client_event.as_json();
+    let result = ClientToRelayCommEvent::from_json(result_as_json).unwrap();
 
-    assert_eq!(
-      expected,
-      mock
-        .mock_client_event
-        .as_str()
-        .unwrap()
-        .replace("\\\"", "\"")
-    );
+    assert_eq!(expected, result);
   }
 
   #[test]
-  fn test_client_to_relay_comm_event_from_str() {
+  fn test_client_to_relay_comm_event_from_json() {
     let mock = EvtSut::new();
 
-    let expected = "[\"EVENT\",\"{\\\"id\\\":\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\",\\\"pubkey\\\":\\\"\\\",\\\"created_at\\\":0,\\\"kind\\\":1,\\\"tags\\\":[],\\\"content\\\":\\\"\\\",\\\"sig\\\":\\\"\\\"}\"]".to_owned();
+    let event_json = mock.mock_event.as_value();
+    let from_json = json!(["EVENT", event_json]).to_string();
 
-    let result = ClientToRelayCommEvent::from_string(expected).unwrap();
+    let result = ClientToRelayCommEvent::from_json(from_json).unwrap();
 
     assert_eq!(result, mock.mock_client_event);
-  }
-
-  #[test]
-  fn test_client_to_relay_comm_event_from_vec() {
-    let mock = EvtSut::new();
-
-    let expected: Vec<String> = vec!["EVENT".to_owned(), mock.mock_event.as_str()];
-    let expected2: Vec<String> = vec!["EVENT".to_owned()];
-    let expected3: Vec<String> = vec![];
-
-    let result = ClientToRelayCommEvent::from_vec(expected).unwrap();
-    let result2 = ClientToRelayCommEvent::from_vec(expected2);
-    let result3 = ClientToRelayCommEvent::from_vec(expected3);
-
-    assert_eq!(result, mock.mock_client_event);
-    assert!(result2.is_err());
-    assert!(result3.is_err());
-  }
-
-  #[test]
-  fn test_client_to_relay_comm_event_as_vec() {
-    let mock = EvtSut::new();
-
-    let default_client_to_relay_event = ClientToRelayCommEvent::default();
-
-    let expected_default: Vec<String> = vec!["EVENT".to_owned(), Event::default().as_str()];
-    let expected: Vec<String> = vec!["EVENT".to_owned(), mock.mock_event.as_str()];
-
-    assert_eq!(expected_default, default_client_to_relay_event.as_vec());
-    assert_eq!(expected, mock.mock_client_event.as_vec());
   }
 }

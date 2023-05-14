@@ -24,7 +24,7 @@ impl ClientToRelayCommRequest {
     }
   }
 
-  /// Get request as json string
+  /// Get request as JSON string
   pub fn as_json(&self) -> String {
     self.as_value().to_string()
   }
@@ -71,6 +71,8 @@ impl ClientToRelayCommRequest {
     // Req
     // ["REQ", <subscription_id>, <filter JSON>, <filter JSON>...]
     if v[0] == "REQ" {
+      // A client can choose to only connect to a relay, without 
+      // querying any data
       if v_len == 2 {
         let subscription_id = serde_json::from_value(v[1].clone())?;
         return Ok(Self::new_req(subscription_id, Vec::new()));
@@ -110,7 +112,12 @@ impl<'de> Deserialize<'de> for ClientToRelayCommRequest {
   where
     D: Deserializer<'de>,
   {
+    // We don't know what we're receiving. So just try to deserialize it
+    // to some value
     let json_value = Value::deserialize(deserializer)?;
+
+    // If the deserialization happens correctly (i.e.: is a valid JSON),
+    // We verify if this JSON is the one we want, namely `ClientToRelayCommRequest`
     ClientToRelayCommRequest::from_value(json_value).map_err(serde::de::Error::custom)
   }
 }
