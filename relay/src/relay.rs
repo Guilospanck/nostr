@@ -85,7 +85,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     return result;
   }
 
-  if let Ok(event_msg) = ClientToRelayCommEvent::from_string(msg.to_string()) {
+  if let Ok(event_msg) = ClientToRelayCommEvent::from_json(msg.to_string()) {
     println!("Event:\n {:?}\n\n", event_msg);
 
     result.is_event = true;
@@ -194,7 +194,7 @@ async fn handle_connection(
 
     if msg_parsed.is_event {
       let event = msg_parsed.data.event.event;
-      let event_stringfied = event.as_str();
+      let event_stringfied = event.as_json();
 
       let mut mutable_events_db = events_db.lock().unwrap();
 

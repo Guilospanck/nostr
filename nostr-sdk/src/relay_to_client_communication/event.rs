@@ -41,7 +41,7 @@ impl Default for RelayToClientCommEvent {
 
 impl From<RelayToClientCommEvent> for Vec<String> {
   fn from(data: RelayToClientCommEvent) -> Self {
-    vec![data.code, data.subscription_id, data.event.as_str()]
+    vec![data.code, data.subscription_id, data.event.as_json()]
   }
 }
 
@@ -69,7 +69,7 @@ where
     Self {
       code: relay_to_client_event[0].clone(),
       subscription_id: relay_to_client_event[1].clone(),
-      event: Event::from_serialized(&relay_to_client_event[2]),
+      event: Event::from_json(&relay_to_client_event[2]).unwrap(),
     }
   }
 }
@@ -142,7 +142,7 @@ mod tests {
     let expected_serialized = serde_json::to_string(&vec![
       mock.mock_code,
       mock.mock_subscription_id,
-      mock.mock_event.as_str(),
+      mock.mock_event.as_json(),
     ])
     .unwrap();
 
@@ -161,7 +161,7 @@ mod tests {
     let serialized = serde_json::to_string(&vec![
       mock.mock_code,
       mock.mock_subscription_id,
-      mock.mock_event.as_str(),
+      mock.mock_event.as_json(),
     ])
     .unwrap();
 
@@ -180,7 +180,7 @@ mod tests {
     let expected_vec = vec![
       mock.mock_code,
       mock.mock_subscription_id,
-      mock.mock_event.as_str(),
+      mock.mock_event.as_json(),
     ];
 
     assert_eq!(event.as_vec(), expected_vec);
@@ -198,7 +198,7 @@ mod tests {
     let vec = vec![
       mock.mock_code,
       mock.mock_subscription_id,
-      mock.mock_event.as_str(),
+      mock.mock_event.as_json(),
     ];
 
     assert_eq!(RelayToClientCommEvent::from_vec(vec), expected_event);

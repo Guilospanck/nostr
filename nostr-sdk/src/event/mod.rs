@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 // Event Modules
 pub mod id;
@@ -13,6 +14,16 @@ use self::tag::Tag;
 
 pub type PubKey = String;
 pub type Timestamp = u64;
+
+/// [`Event`] error
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+  /// Error serializing or deserializing JSON data
+  #[error(transparent)]
+  Json(#[from] serde_json::Error),
+  #[error("Invalid data")]
+  InvalidData
+}
 
 ///
 /// Event is the only object that exists in the Nostr protocol.
@@ -79,11 +90,33 @@ impl Event {
     }
   }
 
-  pub fn from_serialized(data: &str) -> Self {
-    serde_json::from_str::<Self>(data).unwrap()
+  /// Deserializes from [`Value`]
+  pub fn from_value(msg: Value) -> Result<Self, Error> {
+    serde_json::from_value(msg).map_err(Error::Json)
   }
 
-  pub fn as_str(&self) -> String {
+  /// Serialize as [`Value`]
+  pub fn as_value(&self) -> Value {
+    json!(self)
+  }
+
+  /// Deserialize [`Event`] from JSON string
+  pub fn from_json<S>(msg: S) -> Result<Self, Error>
+  where
+    S: Into<String>,
+  {
+    let msg: &str = &msg.into();
+
+    if msg.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let value: Value = serde_json::from_str(msg)?;
+    Self::from_value(value)
+  }
+
+  /// Get [`Event`] in JSON string
+  pub fn as_json(&self) -> String {
     serde_json::to_string(self).unwrap()
   }
 }
@@ -160,21 +193,21 @@ mod tests {
   #[test]
   fn test_complete_event_serialize_and_deserialize_correctly() {
     let (expected_event, expected_serialized) = make_sut(false, false);
-    assert_eq!(expected_event, Event::from_serialized(&expected_serialized));
-    assert_eq!(expected_serialized, expected_event.as_str());
+    assert_eq!(expected_event, Event::from_json(&expected_serialized).unwrap());
+    assert_eq!(expected_serialized, expected_event.as_json());
   }
 
   #[test]
   fn test_event_tags_without_relay_url_serialize_and_deserialize_correctly() {
     let (expected_event, expected_serialized) = make_sut(true, false);
-    assert_eq!(expected_event, Event::from_serialized(&expected_serialized));
-    assert_eq!(expected_serialized, expected_event.as_str());
+    assert_eq!(expected_event, Event::from_json(&expected_serialized).unwrap());
+    assert_eq!(expected_serialized, expected_event.as_json());
   }
 
   #[test]
   fn test_event_tags_without_marker_and_deserialize_correctly() {
     let (expected_event, expected_serialized) = make_sut(false, true);
-    assert_eq!(expected_event, Event::from_serialized(&expected_serialized));
-    assert_eq!(expected_serialized, expected_event.as_str());
+    assert_eq!(expected_event, Event::from_json(&expected_serialized).unwrap());
+    assert_eq!(expected_serialized, expected_event.as_json());
   }
 }
