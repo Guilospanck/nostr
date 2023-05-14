@@ -124,7 +124,7 @@ impl<'de> Deserialize<'de> for ClientToRelayCommRequest {
 #[cfg(test)]
 mod tests {
   use crate::{
-    event::{id::EventId, Timestamp},
+    event::{id::EventId, kind::EventKind, Timestamp},
     filter::Filter,
   };
 
@@ -132,6 +132,7 @@ mod tests {
 
   #[cfg(test)]
   use pretty_assertions::assert_eq;
+  use serde_json::json;
 
   struct ReqSut {
     mock_client_request: ClientToRelayCommRequest,
@@ -228,14 +229,49 @@ mod tests {
       .filters
       .push(mock.mock_filter.clone());
 
-    let expected = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
-    let expected2 = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
+    // let from_str = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
+    // let from_str2 = "[\"REQ\",\"mock_subscription_id\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\",\"{\\\"ids\\\":[\\\"05b25af3-4250-4fbf-8ef5-97220858f9ab\\\"],\\\"authors\\\":null,\\\"kinds\\\":null,\\\"#e\\\":null,\\\"#p\\\":null,\\\"since\\\":null,\\\"until\\\":null,\\\"limit\\\":null}\"]".to_owned();
+    // let from_str3 = "[\"REQ\",\"9433794702187832\",\"{\\\"#e\\\":[\\\"44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4\\\",\\\"7742783afbf6b283e81af63782ab0c05bbcbccba7f3abce0e0f23706dc27bd42\\\",\\\"9621051bcd8723f03da00aae61ee46956936726fcdfa6f34e29ae8f1e2b63cb5\\\"],\\\"kinds\\\":[1,6,7,9735]}\"]".to_owned();
 
-    let result = ClientToRelayCommRequest::from_string(expected).unwrap();
-    let result2 = ClientToRelayCommRequest::from_string(expected2).unwrap();
+    let filter = json!({
+      "ids":["05b25af3-4250-4fbf-8ef5-97220858f9ab"],"authors":null,"kinds":null,"#e":null,"#p":null,"since":null,"until":null,"limit":null
+    }).to_string();
+    let from_str = json!(["REQ", "mock_subscription_id", filter]).to_string();
+
+    let from_str2 = json!(["REQ", "mock_subscription_id", filter, filter, filter]).to_string();
+
+    let filter = json!({
+      "kinds":[1,6,7,9735],
+      "#e":["44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4","7742783afbf6b283e81af63782ab0c05bbcbccba7f3abce0e0f23706dc27bd42","9621051bcd8723f03da00aae61ee46956936726fcdfa6f34e29ae8f1e2b63cb5"]
+    }).to_string();
+    let from_str3 = json!(["REQ", "9433794702187832", filter]).to_string();
+
+    let result = ClientToRelayCommRequest::from_string(from_str).unwrap();
+    let result2 = ClientToRelayCommRequest::from_string(from_str2).unwrap();
+    let result3 = ClientToRelayCommRequest::from_string(from_str3).unwrap();
+
+    let expected_client_request_for_from_str_3 = ClientToRelayCommRequest {
+      code: "REQ".to_string(),
+      subscription_id: "9433794702187832".to_string(),
+      filters: vec![Filter {
+        e: Some(vec![
+          "44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4".to_string(),
+          "7742783afbf6b283e81af63782ab0c05bbcbccba7f3abce0e0f23706dc27bd42".to_string(),
+          "9621051bcd8723f03da00aae61ee46956936726fcdfa6f34e29ae8f1e2b63cb5".to_string(),
+        ]),
+        kinds: Some(vec![
+          EventKind::Text,
+          EventKind::Custom(6),
+          EventKind::Custom(7),
+          EventKind::Custom(9735),
+        ]),
+        ..Default::default()
+      }],
+    };
 
     assert_eq!(result, mock.mock_client_request);
     assert_eq!(result2, client_request_for_expectation_2);
+    assert_eq!(result3, expected_client_request_for_from_str_3);
   }
 
   #[test]

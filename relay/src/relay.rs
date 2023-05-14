@@ -71,6 +71,8 @@ struct MsgResult {
     \"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\",
     \"{\"ids\":[\"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb\"],\"authors\":null,\"kinds\":null,\"tags\":null,\"since\":null,\"until\":null,\"limit\":null}\",...]".to_owned();
   let msg = "[\"CLOSE\",\"asdf\"]".to_owned();
+
+  ["REQ","9433794702187832",{"#e":["44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4","7742783afbf6b283e81af63782ab0c05bbcbccba7f3abce0e0f23706dc27bd42","9621051bcd8723f03da00aae61ee46956936726fcdfa6f34e29ae8f1e2b63cb5"],"kinds":[1,6,7,9735]}]
 */
 fn parse_message_received_from_client(msg: &str) -> MsgResult {
   let mut result = MsgResult::default();
