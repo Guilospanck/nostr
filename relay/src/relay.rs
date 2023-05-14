@@ -93,7 +93,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
     return result;
   }
 
-  if let Ok(request_msg) = ClientToRelayCommRequest::from_string(msg.to_string()) {
+  if let Ok(request_msg) = ClientToRelayCommRequest::from_json(msg.to_string()) {
     println!("Request:\n {:?}\n\n", request_msg);
 
     result.is_request = true;
