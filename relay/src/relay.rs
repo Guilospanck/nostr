@@ -189,7 +189,7 @@ async fn handle_connection(
         subscription_id: msg_parsed.clone().data.request.subscription_id,
         ..Default::default()
       };
-      send_message_to_client(tx.clone(), eose.as_content());
+      send_message_to_client(tx.clone(), eose.as_json());
     }
 
     if msg_parsed.is_event {

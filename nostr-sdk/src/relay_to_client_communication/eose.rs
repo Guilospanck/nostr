@@ -1,4 +1,7 @@
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{json, Value};
+
+use super::Error;
 
 /// Used to indicate the End Of Stored Events (EOSE)
 /// and the beginning of events newly received in
@@ -11,20 +14,55 @@ pub struct RelayToClientCommEose {
 }
 
 impl RelayToClientCommEose {
-  pub fn as_content(&self) -> String {
-    serde_json::to_string(self).unwrap()
+  // Create new `EOSE` message
+  pub fn new_eose(subscription_id: String) -> Self {
+    Self {
+      code: "EOSE".to_string(),
+      subscription_id,
+    }
   }
 
-  pub fn from_content(content: String) -> Self {
-    serde_json::from_str(&content).unwrap()
+  pub fn as_value(&self) -> Value {
+    json!(["EOSE", self.subscription_id])
   }
 
-  pub fn as_vec(&self) -> Vec<String> {
-    self.clone().into()
+  pub fn from_value(msg: Value) -> Result<Self, Error> {
+    let v = msg.as_array().ok_or(Error::InvalidData)?;
+
+    if v.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let v_len = v.len();
+
+    // EOSE
+    // ["EOSE", <subscription_id>]
+    if v[0] != "EOSE" || v_len != 2 {
+      return Err(Error::InvalidData);
+    }
+
+    let subscription_id = serde_json::from_value(v[1].clone())?;
+    Ok(Self::new_eose(subscription_id))
   }
 
-  pub fn from_vec(data: Vec<String>) -> Self {
-    Self::from(data)
+  /// Get [`RelayToClientCommEose`] as JSON string
+  pub fn as_json(&self) -> String {
+    self.as_value().to_string()
+  }
+
+  /// Get [`RelayToClientCommEose`] from JSON
+  pub fn from_json<S>(msg: S) -> Result<Self, Error>
+  where
+    S: Into<String>,
+  {
+    let msg: &str = &msg.into();
+
+    if msg.is_empty() {
+      return Err(Error::InvalidData);
+    }
+
+    let json_value: Value = serde_json::from_str(msg)?;
+    Self::from_value(json_value)
   }
 }
 
@@ -37,49 +75,13 @@ impl Default for RelayToClientCommEose {
   }
 }
 
-impl From<RelayToClientCommEose> for Vec<String> {
-  fn from(data: RelayToClientCommEose) -> Self {
-    vec![data.code, data.subscription_id]
-  }
-}
-
-impl<S> From<Vec<S>> for RelayToClientCommEose
-where
-  S: Into<String>,
-{
-  fn from(relay_to_client_eose: Vec<S>) -> Self {
-    let relay_to_client_eose: Vec<String> =
-      relay_to_client_eose.into_iter().map(|v| v.into()).collect();
-
-    let length = relay_to_client_eose.len();
-
-    if length == 0 || length == 1 {
-      return Self::default();
-    }
-
-    Self {
-      code: relay_to_client_eose[0].clone(),
-      subscription_id: relay_to_client_eose[1].clone(),
-    }
-  }
-}
-
 impl Serialize for RelayToClientCommEose {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    // using the `impl From<RelayToClientCommEose> for Vec<String>`
-    let data: Vec<String> = self.as_vec();
-    // A Vec<_> is a sequence, therefore we must tell the
-    // deserializer how long is the sequence (vector's length)
-    let mut seq = serializer.serialize_seq(Some(data.len()))?;
-    // Serialize each element of the Vector
-    for element in data.into_iter() {
-      seq.serialize_element(&element)?;
-    }
-    // Finalize the serialization and return the result
-    seq.end()
+    let json_value: Value = self.as_value();
+    json_value.serialize(serializer)
   }
 }
 
@@ -88,12 +90,8 @@ impl<'de> Deserialize<'de> for RelayToClientCommEose {
   where
     D: Deserializer<'de>,
   {
-    type Data = Vec<String>;
-    // Deserializes a string (serialized) into
-    // a Vec<String>
-    let vec: Vec<String> = Data::deserialize(deserializer)?;
-    // Then it uses the `impl<S> From<Vec<S>> for RelayToClientCommEose` to retrieve the `RelayToClientCommEose` struct
-    Ok(Self::from_vec(vec))
+    let json_value: Value = Value::deserialize(deserializer)?;
+    RelayToClientCommEose::from_value(json_value).map_err(serde::de::Error::custom)
   }
 }
 
@@ -112,7 +110,7 @@ mod tests {
   impl EventMock {
     fn new() -> Self {
       Self {
-        mock_code: String::from("mock_code"),
+        mock_code: String::from("EOSE"),
         mock_subscription_id: String::from("mock_subscription_id"),
       }
     }
@@ -126,10 +124,9 @@ mod tests {
       subscription_id: mock.mock_subscription_id.clone(),
     };
 
-    let expected_serialized =
-      serde_json::to_string(&vec![mock.mock_code, mock.mock_subscription_id]).unwrap();
+    let expected_serialized = json!([mock.mock_code, mock.mock_subscription_id]).to_string();
 
-    assert_eq!(expected_serialized, event.as_content());
+    assert_eq!(expected_serialized, event.as_json());
   }
 
   #[test]
@@ -140,38 +137,11 @@ mod tests {
       subscription_id: mock.mock_subscription_id.clone(),
     };
 
-    let serialized =
-      serde_json::to_string(&vec![mock.mock_code, mock.mock_subscription_id]).unwrap();
+    let serialized = json!([mock.mock_code, mock.mock_subscription_id]).to_string();
 
     assert_eq!(
-      RelayToClientCommEose::from_content(serialized),
+      RelayToClientCommEose::from_json(serialized).unwrap(),
       expected_event
     );
-  }
-
-  #[test]
-  fn test_eose_as_vec() {
-    let mock = EventMock::new();
-    let event = RelayToClientCommEose {
-      code: mock.mock_code.clone(),
-      subscription_id: mock.mock_subscription_id.clone(),
-    };
-
-    let expected_vec = vec![mock.mock_code, mock.mock_subscription_id];
-
-    assert_eq!(event.as_vec(), expected_vec);
-  }
-
-  #[test]
-  fn test_eose_from_vec() {
-    let mock = EventMock::new();
-    let expected_event = RelayToClientCommEose {
-      code: mock.mock_code.clone(),
-      subscription_id: mock.mock_subscription_id.clone(),
-    };
-
-    let vec = vec![mock.mock_code, mock.mock_subscription_id];
-
-    assert_eq!(RelayToClientCommEose::from_vec(vec), expected_event);
   }
 }
