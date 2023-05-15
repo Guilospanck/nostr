@@ -167,7 +167,7 @@ async fn handle_connection(
         message,
         ..Default::default()
       }
-      .as_content();
+      .as_json();
       send_message_to_client(tx.clone(), notice_event);
     }
 
@@ -263,7 +263,7 @@ pub async fn initiate_relay() -> Result<(), MainError> {
           message: format!("Server {addr} closing connection..."),
           ..Default::default()
         }
-        .as_content();
+        .as_json();
         send_message_to_client(client.tx.clone(), notice_event);
         client.tx.close_channel();
       }
