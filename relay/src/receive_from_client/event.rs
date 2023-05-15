@@ -27,7 +27,7 @@ pub fn on_event_message(
               event: event.clone(),
               ..Default::default()
             }
-            .as_content(),
+            .as_json(),
           });
           // I can break from going through client requests
           // because I have already found that this client requests
