@@ -8,10 +8,10 @@ edition = "2021"
 [dependencies]
 bitcoin_hashes = { version = "0.11.0", features = ["std"] }
 rand = "0.8.5"
-futures-channel = "0.3.25"
-futures-util = "0.3.25"
-tokio = { version = "1.23.0", features = ["full"] }
-tokio-tungstenite = { version = "*", features = ["native-tls"] }
+futures-channel = "0.3.28"
+futures-util = "0.3.28"
+tokio = { version = "1.28.1", features = ["full"] }
+tokio-tungstenite = { version = "0.19.0", features = ["native-tls"] }
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
 redb = "0.16.0"
