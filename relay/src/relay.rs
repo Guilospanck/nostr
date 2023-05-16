@@ -125,8 +125,6 @@ async fn handle_connection(
   events: Arc<Mutex<Vec<Event>>>,
   events_db: Arc<Mutex<EventsDB<'_>>>,
 ) {
-  println!("Incoming TCP connection from: {}", addr);
-
   let ws_stream = tokio_tungstenite::accept_async(raw_stream)
     .await
     .expect("Error during the websocket handshake occurred");
@@ -182,8 +180,10 @@ async fn handle_connection(
         &events,
       );
 
-      let events_stringfied = json!(events_to_send_to_client).to_string();
-      send_message_to_client(tx.clone(), events_stringfied);
+      for event_message in events_to_send_to_client {
+        let events_stringfied = json!(event_message).to_string();
+        send_message_to_client(tx.clone(), events_stringfied);
+      }
 
       // Send EOSE event to indicate end of stored events
       let eose = RelayToClientCommEose {
