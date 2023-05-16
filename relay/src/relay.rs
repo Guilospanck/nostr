@@ -8,6 +8,7 @@ use std::{
 use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
+use serde_json::json;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -181,7 +182,7 @@ async fn handle_connection(
         &events,
       );
 
-      let events_stringfied = serde_json::to_string(&events_to_send_to_client).unwrap();
+      let events_stringfied = json!(events_to_send_to_client).to_string();
       send_message_to_client(tx.clone(), events_stringfied);
 
       // Send EOSE event to indicate end of stored events

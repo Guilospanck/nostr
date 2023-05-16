@@ -9,6 +9,10 @@ pub struct OutboundInfo {
 }
 
 pub fn send_message_to_client(tx: Tx, content: String) {
+  println!("===============================================================");
+  println!("Sending message to client:");
+  println!("{content}");
+  println!("===============================================================");
   tx.unbounded_send(Message::binary(content.as_bytes()))
     .unwrap();
 }
