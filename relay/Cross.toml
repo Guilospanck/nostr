@@ -1,0 +1,4 @@
+[build]
+build-std = false
+default-target = "x86_64-unknown-linux-gnu" # if this is set, does not need to pass `--target` to cross build command
+pre-build = "./cross_pre_build.sh" # Runs when the cross build program runs 
