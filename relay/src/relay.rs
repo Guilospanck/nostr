@@ -180,6 +180,7 @@ async fn handle_connection(
         &events,
       );
 
+      // Send one event at a time
       for event_message in events_to_send_to_client {
         let events_stringfied = json!(event_message).to_string();
         send_message_to_client(tx.clone(), events_stringfied);

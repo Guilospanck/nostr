@@ -48,3 +48,7 @@ dpkg -i libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
 ```
 
 After running the `make` command, the compiled application will be available at `./target/x86_64-unknown-linux-gnu/release/relay`. Just copy it and run in a `x86_64` linux machine.
+
+### Thoughts on running it on the server machine
+
+You can spin it up as a [`systemd` service](https://www.shellhacks.com/systemd-service-file-example/).
