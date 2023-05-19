@@ -2,25 +2,6 @@
 
 set -eu
 
-# Test Relay
-if ! cargo test --tests --manifest-path ./relay/Cargo.toml
-then
-    echo "There are some Relay test issues."
-    exit 1
-fi
-
-# Test Client
-if ! cargo test --tests --manifest-path ./client/Cargo.toml
-then
-    echo "There are some Client test issues."
-    exit 1
-fi
-
-# Test SDK
-if ! cargo test --tests --manifest-path ./nostr-sdk/Cargo.toml
-then
-    echo "There are some SDK test issues."
-    exit 1
-fi
+make run-all-tests
 
 exit 0
