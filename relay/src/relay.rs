@@ -8,9 +8,10 @@ use std::{
 use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
-use log::{debug, info};
+use log::{debug, error, info};
 use serde_json::json;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{self, Duration};
 use tokio_tungstenite::tungstenite::Message;
 
 use nostr_sdk::{
@@ -112,7 +113,7 @@ fn connection_cleanup(
   client_connection_info: Arc<Mutex<Vec<ClientConnectionInfo>>>,
   addr: SocketAddr,
 ) {
-  println!("Client with address {} disconnected", &addr);
+  info!("Client with address {} disconnected", &addr);
   client_connection_info
     .lock()
     .unwrap()
@@ -131,9 +132,27 @@ async fn handle_connection(
     .expect("Error during the websocket handshake occurred");
   info!("WebSocket connection established: {addr}");
 
+  // Start a periodic timer to send ping messages
+  let ping_interval = Duration::from_secs(5);
+  let mut interval = time::interval(ping_interval);
+
   let (tx, rx) = futures_channel::mpsc::unbounded();
 
   let (outgoing, incoming) = ws_stream.split();
+
+  // Spawn the handler to run async
+  let tx_clone = tx.clone();
+  tokio::spawn(async move {
+    loop {
+      interval.tick().await;
+
+      // Send a ping message
+      let ping_message = Message::Ping(vec![]);
+      if let Err(err) = tx_clone.unbounded_send(ping_message) {
+        error!("Error sending ping message: {err}");
+      }
+    }
+  });
 
   let broadcast_incoming = incoming.try_for_each(|msg| {
     debug!("Received a message from {addr}: {}", msg.to_text().unwrap());
