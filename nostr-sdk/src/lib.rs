@@ -7,7 +7,8 @@ static INIT_LOGGER: Once = Once::new();
 
 fn init_logger() {
   INIT_LOGGER.call_once(|| {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    std::env::set_var("RUST_LOG_STYLE", "always");
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
   });
 }
 

@@ -6,3 +6,6 @@ run-unit-tests:
 
 run-clippy:
 	cargo clippy --all-targets -- -D warnings
+
+run:
+	cargo run
