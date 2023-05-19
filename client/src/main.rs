@@ -1,7 +1,7 @@
 use env_logger::Env;
-use relay::relay;
+use client::client;
 
 fn main() {
   env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-  relay::initiate_relay().expect("Error while trying to instatiante relay WS");
+  client::initiate_client().expect("Could not start client");
 }

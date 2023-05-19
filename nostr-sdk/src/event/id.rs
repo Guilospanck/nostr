@@ -1,5 +1,6 @@
 use bitcoin_hashes::{sha256, Hash};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use super::{kind::EventKind, tag::Tag, PubKey, Timestamp};
 
@@ -20,11 +21,7 @@ impl EventId {
     tags: Vec<Tag>,
     content: String,
   ) -> Self {
-    let data = format!(
-      "[{},\"{}\",{},{},{:?},\"{}\"]",
-      0, pubkey, created_at, kind, tags, content
-    );
-
+    let data = json!([0, pubkey, created_at, kind, tags, content]).to_string();
     let hash = sha256::Hash::hash(data.as_bytes());
     Self(hash.to_string())
   }
@@ -61,14 +58,30 @@ mod tests {
       mock_tags.clone(),
       mock_content.clone(),
     );
-    let expected = format!(
-      "[{},\"{}\",{},{},{:?},\"{}\"]",
-      0, mock_pub_key, mock_created_at, mock_kind, mock_tags, mock_content
+    let expected = json!([
+      0,
+      mock_pub_key,
+      mock_created_at,
+      mock_kind,
+      mock_tags,
+      mock_content
+    ])
+    .to_string();
+    let not_expected = EventId(
+      sha256::Hash::hash(
+        json!([
+          1,
+          mock_pub_key,
+          mock_created_at,
+          mock_kind,
+          mock_tags,
+          mock_content
+        ])
+        .to_string()
+        .as_bytes(),
+      )
+      .to_string(),
     );
-    let not_expected = EventId(sha256::Hash::hash(format!(
-      "[{},\"{}\",{},{},{:?},\"{}\"]",
-      1, mock_pub_key, mock_created_at, mock_kind, mock_tags, mock_content
-    ).as_bytes()).to_string());
     let hash = sha256::Hash::hash(expected.as_bytes());
     let expected = EventId(hash.to_string());
 

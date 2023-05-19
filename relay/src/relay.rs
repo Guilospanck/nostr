@@ -8,6 +8,7 @@ use std::{
 use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 
+use log::{debug, info};
 use serde_json::json;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
@@ -79,7 +80,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
   let mut result = MsgResult::default();
 
   if let Ok(close_msg) = ClientToRelayCommClose::from_json(msg.to_string()) {
-    println!("Close:\n {:?}\n\n", close_msg);
+    debug!("Close:\n {:?}\n\n", close_msg);
 
     result.is_close = true;
     result.data.close = close_msg;
@@ -87,7 +88,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
   }
 
   if let Ok(event_msg) = ClientToRelayCommEvent::from_json(msg.to_string()) {
-    println!("Event:\n {:?}\n\n", event_msg);
+    debug!("Event:\n {:?}\n\n", event_msg);
 
     result.is_event = true;
     result.data.event = event_msg;
@@ -95,7 +96,7 @@ fn parse_message_received_from_client(msg: &str) -> MsgResult {
   }
 
   if let Ok(request_msg) = ClientToRelayCommRequest::from_json(msg.to_string()) {
-    println!("Request:\n {:?}\n\n", request_msg);
+    debug!("Request:\n {:?}\n\n", request_msg);
 
     result.is_request = true;
     result.data.request = request_msg;
@@ -128,18 +129,14 @@ async fn handle_connection(
   let ws_stream = tokio_tungstenite::accept_async(raw_stream)
     .await
     .expect("Error during the websocket handshake occurred");
-  println!("WebSocket connection established: {}", addr);
+  info!("WebSocket connection established: {addr}");
 
   let (tx, rx) = futures_channel::mpsc::unbounded();
 
   let (outgoing, incoming) = ws_stream.split();
 
   let broadcast_incoming = incoming.try_for_each(|msg| {
-    println!(
-      "Received a message from {}: {}",
-      addr,
-      msg.to_text().unwrap()
-    );
+    debug!("Received a message from {addr}: {}", msg.to_text().unwrap());
 
     let mut clients = client_connection_info.lock().unwrap();
     let mut events = events.lock().unwrap();
@@ -252,7 +249,7 @@ pub async fn initiate_relay() -> Result<(), MainError> {
   // Create the event loop and TCP listener we'll accept connections on.
   let try_socket = TcpListener::bind(&addr).await;
   let listener = try_socket.expect("Failed to bind");
-  println!("Listening on: {}", addr);
+  info!("Listening on: {addr}");
 
   // Handle CTRL+C signal
   let ctrl_c_listener = async {
@@ -271,7 +268,7 @@ pub async fn initiate_relay() -> Result<(), MainError> {
       }
     }
     .await;
-    println!("Ctrl-C received, shutting down");
+    info!("Ctrl-C received, shutting down");
   };
 
   // Spin up the server

@@ -1,15 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use futures_util::{
-  future,
-  pin_mut,
-  stream::FuturesUnordered,
-  StreamExt,
-};
+use futures_util::{future, pin_mut, stream::FuturesUnordered, StreamExt};
 use tokio::io::AsyncReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use uuid::Uuid;
+use log::{debug, info, error};
 
 use nostr_sdk::client_to_relay_communication::request::ClientToRelayCommRequest;
 use nostr_sdk::event::id::EventId;
@@ -18,14 +14,15 @@ use nostr_sdk::filter::Filter;
 use crate::db::{get_client_keys, Keys};
 
 const LIST_OF_RELAYS: [&str; 2] = [
-  // "wss://nostr-relay-test.onrender.com",
+  // "wss://nostr-relay.guilospanck.com",
   "ws://127.0.0.1:8080/",
   "ws://127.0.0.1:8081/",
 ];
 
-// Our helper method which will read data from stdin and send it along the
-// sender provided.
-// Send STDIN to WS
+/// Our helper method which will read data from stdin and send it along the
+/// sender provided.
+/// Send STDIN to WS
+/// 
 async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
   let mut stdin = tokio::io::stdin();
   loop {
@@ -39,8 +36,9 @@ async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
   }
 }
 
-// Our helper method which will send initial data upon connection.
-// It will require some data from the relay using a filter subscription.
+/// Our helper method which will send initial data upon connection.
+/// It will require some data from the relay using a filter subscription.
+/// 
 async fn send_initial_message(
   tx: futures_channel::mpsc::UnboundedSender<Message>,
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
@@ -69,9 +67,7 @@ async fn send_initial_message(
     filters,
     subscription_id,
     ..Default::default()
-  }
-  .as_str()
-  .unwrap();
+  }.as_json();
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes()))
     .unwrap();
@@ -80,35 +76,35 @@ async fn send_initial_message(
 async fn handle_connection(
   connect_addr: String,
   subscriptions_ids: Arc<Mutex<Vec<String>>>,
-  keys: Keys,
+  _keys: Keys,
 ) {
   let url = url::Url::parse(&connect_addr).unwrap();
 
   let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-  println!("WebSocket handshake has been successfully completed");
+  info!("WebSocket handshake has been successfully completed");
 
-  println!("{:?}", keys);
+  let (tx, rx) = futures_channel::mpsc::unbounded();
 
-  let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-  tokio::spawn(read_stdin(stdin_tx.clone()));
+  let (outgoing, incoming) = ws_stream.split();
+
+  // Spawn new thread to read from stdin and send to relay.
+  tokio::spawn(read_stdin(tx.clone()));
 
   // send initial message
-  send_initial_message(stdin_tx, subscriptions_ids).await;
+  send_initial_message(tx, subscriptions_ids).await;
 
-  let (write, read) = ws_stream.split();
-
-  let stdin_to_ws = stdin_rx.map(Ok).forward(write);
+  let stdin_to_ws = rx.map(Ok).forward(outgoing);
 
   // This will print to stdout whatever the WS sends
   // (The WS is forwarding messages from other clients)
   let ws_to_stdout = {
-    read.for_each(|message| async {
+    incoming.for_each(|message| async {
       match message {
         Ok(msg) => {
-          println!("Received message from relay: {:?}", msg.to_string());
+          debug!("Received message from relay: {}", msg.to_text().unwrap());
         }
         Err(err) => {
-          eprintln!("Error: {}", err);
+          error!("[ws_to_stdout] {err}");
         }
       }
     })
@@ -127,7 +123,7 @@ pub async fn initiate_client() -> Result<(), redb::Error> {
   let connections: Vec<_> = LIST_OF_RELAYS
     .into_iter()
     .map(|addr| {
-      println!("Connecting to relay {:?}...", addr);
+      debug!("Connecting to relay {addr}");
       tokio::spawn(handle_connection(
         addr.to_string(),
         subscriptions_ids.clone(),

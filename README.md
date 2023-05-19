@@ -20,8 +20,29 @@
 - [x] [RELAY] When sending events requested to client, do not send it as a vector.
 - [x] [RELAY] Verify [`UnboundedSender<Message>`](https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.UnboundedSender.html) for tips on dealing with closed connection.
 - [x] [RELAY] Add listener to CTRL C.
+- [x] [RELAY] Fix JSON `as_json` and `from_json` of communications.
+- [x] [RELAY] Check filter function on `REQ` message. I suppose it is not working OR
+the database is not saving events properly. Example:
+
+```json
+["EVENT",{"kind":1,"content":"Hello modafoca","tags":[],"created_at":1684144532,"pubkey":"5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835","id":"2c53b58e0882b75b6540659ec0f4217d41000a12497ecbcabe9574384839273c","sig":"054a5e289356e5b0cb3a5b5e71e07e91b178c67c236bc2c77f98faeef418439fb9a944f054f0f010d08dfbc8fb68e36afaf485be24f1526f38134df61a58c311"}]
+
+["REQ","5968712077837064",{"authors":["5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835"],"kinds":[1,6]}]
+```
+
+It is working. The problem was with sending the message as BINARY to the client.
+
+- [x] [RELAY] ~~I believe I'm sending too many events at a time. Need to check.~~ No, I'm doing fine.
+- [x] [RELAY] Add `nginx.conf` to the repository -> remember also when setting up a new nginx server that if certbot is not finding it, is because probably because you are using `www.<domain>` and not only `<domain>`. Also, remember about the `Proxied` thing of cloudfare.
+- [x] [CLIENT/RELAY] Improve error and normal functioning logging/handling (`env::logger`, `tracing`).
+- [ ] [RELAY] Change the way Relay reads from DB (putting all that data in memory is not the best case scenario).
+- [ ] [RELAY] Maybe I can close a channel by sending `tx.unbounded_send(Message::Close()).unwrap()`.
+- [ ] [RELAY] Improve cross-compilation to darwin and windows.
+- [ ] [ALL] Create Makefiles (just like the `relay` one) and change githooks to use them.
+- [ ] [CLIENT/RELAY] Check why GithubActions is failing.
 - [ ] [RELAY] Should check event to verify if the signature is valid.
 - [ ] [CLIENT] Should sign events properly.
+- [ ] [CLIENT] Send `METADATA` when connecting to RELAY.
 - [ ] [CLIENT] When client is sending message, it is alternating between different relays.
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
 - [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
@@ -30,8 +51,8 @@
 - [ ] [CLIENT] Should have a way of handling duplicated events, since a client can be connected to multiple relays.
 - [ ] [CLIENT] Must validate signature.
 - [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
-- [ ] Improve error and normal functioning logging/handling.
 - [ ] Finish the implementation of all the required NIPs (just `NIP01`)
+- [ ] [CLIENT/RELAY] Check `tracing`.
 - [ ] Implement `optional` NIPs
 
 ## NIPs implemented

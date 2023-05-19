@@ -1,3 +1,4 @@
+use log::debug;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::relay::Tx;
@@ -9,10 +10,10 @@ pub struct OutboundInfo {
 }
 
 pub fn send_message_to_client(tx: Tx, content: String) {
-  println!("===============================================================");
-  println!("Sending message to client:");
-  println!("{content}");
-  println!("===============================================================");
+  debug!("===============================================================");
+  debug!("Sending message to client:");
+  debug!("{content}");
+  debug!("===============================================================");
   tx.unbounded_send(Message::Text(content))
     .unwrap();
 }

@@ -24,8 +24,13 @@ fn sign_ecdsa<C: Signing>(
 ) -> Result<ecdsa::Signature, Error> {
   let msg = sha256::Hash::hash(msg);
   let msg = Message::from_slice(&msg)?;
-  let seckey = SecretKey::from_slice(&seckey).expect("32 bytes, within curve order");
-  Ok(secp.sign_ecdsa(&msg, &seckey))
+  match SecretKey::from_slice(&seckey) {
+    Ok(seckey) => Ok(secp.sign_ecdsa(&msg, &seckey)),
+    Err(err) => {
+      log::error!("[sign_ecdsa] {err}");
+      Err(err)
+    }
+  }
 }
 
 ///
@@ -47,7 +52,10 @@ fn verify_ecdsa<C: Verification>(
 
   match secp.verify_ecdsa(&msg, &sig, &pubkey) {
     Ok(_) => Ok(true),
-    Err(err) => panic!("{}", err),
+    Err(err) => {
+      log::error!("[verify_ecdsa] {err}");
+      Err(err)
+    }
   }
 }
 
@@ -64,9 +72,16 @@ fn sign_schnorr<C: Signing>(
 ) -> Result<schnorr::Signature, Error> {
   let msg = sha256::Hash::hash(msg);
   let msg = Message::from_slice(&msg)?;
-  let seckey = SecretKey::from_slice(&seckey).expect("32 bytes, within curve order");
-  let keypair = KeyPair::from_secret_key(secp, &seckey);
-  Ok(secp.sign_schnorr_no_aux_rand(&msg, &keypair))
+  match SecretKey::from_slice(&seckey) {
+    Ok(seckey) => {
+      let keypair = KeyPair::from_secret_key(secp, &seckey);
+      Ok(secp.sign_schnorr_no_aux_rand(&msg, &keypair))
+    }
+    Err(err) => {
+      log::error!("[sign_schnorr] {err}");
+      Err(err)
+    }
+  }
 }
 
 ///
@@ -87,7 +102,10 @@ fn verify_schnorr<C: Verification>(
 
   match secp.verify_schnorr(&sig, &msg, &pubkey.0) {
     Ok(_) => Ok(true),
-    Err(err) => panic!("{}", err),
+    Err(err) => {
+      log::error!("[verify_schnorr] {err}");
+      Err(err)
+    }
   }
 }
 
@@ -96,6 +114,8 @@ fn verify_schnorr<C: Verification>(
 /// can be used for both Schnorr and ECDSA signatures.
 ///
 pub fn generate_keys() -> AsymmetricKeys {
+  super::init_logger();
+
   let secp = Secp256k1::new();
   let mut rng = rand::thread_rng();
 
@@ -150,11 +170,14 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "32 bytes, within curve order: InvalidSecretKey")]
   fn test_should_return_an_error_when_trying_to_sign_schnorr_with_invalid_secret_key() {
     let sut: Sut = make_sut();
     let invalid_seckey = [0x00; 32];
-    sign_schnorr(&sut.secp, &sut.msg, invalid_seckey).unwrap();
+    let result = sign_schnorr(&sut.secp, &sut.msg, invalid_seckey);
+    assert!(result.is_err());
+    let expected_err_message = String::from("malformed or out-of-range secret key");
+    let err_message = result.err().unwrap().to_string();
+    assert_eq!(expected_err_message, err_message);
   }
 
   #[test]
@@ -163,20 +186,21 @@ mod tests {
     let signature_schnorr = sign_schnorr(&sut.secp, &sut.msg, sut.seckey).unwrap();
     let seckey = SecretKey::from_slice(&sut.seckey).unwrap();
     let keypair = KeyPair::from_secret_key(&sut.secp, &seckey);
-
     assert!(verify_schnorr(&sut.secp, &sut.msg, signature_schnorr, keypair).is_ok());
   }
 
   #[test]
-  #[should_panic(expected = "malformed signature")]
   fn test_should_return_err_when_schnorr_signature_is_invalid_for_msg() {
     let sut: Sut = make_sut();
     let invalid_signature_schnorr =
       sign_schnorr(&sut.secp, b"another message", sut.seckey).unwrap();
     let seckey = SecretKey::from_slice(&sut.seckey).unwrap();
     let keypair = KeyPair::from_secret_key(&sut.secp, &seckey);
-
-    verify_schnorr(&sut.secp, &sut.msg, invalid_signature_schnorr, keypair).unwrap();
+    let result = verify_schnorr(&sut.secp, &sut.msg, invalid_signature_schnorr, keypair);
+    assert!(result.is_err());
+    let expected_err_message = String::from("malformed signature");
+    let err_message = result.err().unwrap().to_string();
+    assert_eq!(expected_err_message, err_message);
   }
 
   #[test]
@@ -186,11 +210,14 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "32 bytes, within curve order: InvalidSecretKey")]
   fn test_should_return_an_error_when_trying_to_sign_ecdsa_with_invalid_secret_key() {
     let sut: Sut = make_sut();
     let invalid_seckey = [0x00; 32];
-    sign_ecdsa(&sut.secp, &sut.msg, invalid_seckey).unwrap();
+    let result = sign_ecdsa(&sut.secp, &sut.msg, invalid_seckey);
+    assert!(result.is_err());
+    let expected_err_message = String::from("malformed or out-of-range secret key");
+    let err_message = result.err().unwrap().to_string();
+    assert_eq!(expected_err_message, err_message);
   }
 
   #[test]
@@ -199,19 +226,20 @@ mod tests {
     let signature_ecdsa = sign_ecdsa(&sut.secp, &sut.msg, sut.seckey)
       .unwrap()
       .serialize_compact();
-
     assert!(verify_ecdsa(&sut.secp, &sut.msg, signature_ecdsa, sut.pubkey).is_ok());
   }
 
   #[test]
-  #[should_panic(expected = "signature failed verification")]
   fn test_should_return_err_when_ecdsa_signature_is_invalid_for_msg() {
     let sut: Sut = make_sut();
     let invalid_signature_ecdsa = sign_ecdsa(&sut.secp, b"another message", sut.seckey)
       .unwrap()
       .serialize_compact();
-
-    verify_ecdsa(&sut.secp, &sut.msg, invalid_signature_ecdsa, sut.pubkey).unwrap();
+    let result = verify_ecdsa(&sut.secp, &sut.msg, invalid_signature_ecdsa, sut.pubkey);
+    assert!(result.is_err());
+    let expected_err_message = String::from("signature failed verification");
+    let err_message = result.err().unwrap().to_string();
+    assert_eq!(expected_err_message, err_message);
   }
 
   #[test]
