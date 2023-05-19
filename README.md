@@ -35,11 +35,11 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [RELAY] ~~I believe I'm sending too many events at a time. Need to check.~~ No, I'm doing fine.
 - [x] [RELAY] Add `nginx.conf` to the repository -> remember also when setting up a new nginx server that if certbot is not finding it, is because probably because you are using `www.<domain>` and not only `<domain>`. Also, remember about the `Proxied` thing of cloudfare.
 - [x] [CLIENT/RELAY] Improve error and normal functioning logging/handling (`env::logger`, `tracing`).
+- [x] [ALL] Create Makefiles (just like the `relay` one) and change githooks to use them.
+- [x] [CLIENT/RELAY] Check why GithubActions is failing. Didn't do anything. Just worked again.
 - [ ] [RELAY] Change the way Relay reads from DB (putting all that data in memory is not the best case scenario).
 - [ ] [RELAY] Maybe I can close a channel by sending `tx.unbounded_send(Message::Close()).unwrap()`.
 - [ ] [RELAY] Improve cross-compilation to darwin and windows.
-- [ ] [ALL] Create Makefiles (just like the `relay` one) and change githooks to use them.
-- [ ] [CLIENT/RELAY] Check why GithubActions is failing.
 - [ ] [RELAY] Should check event to verify if the signature is valid.
 - [ ] [CLIENT] Should sign events properly.
 - [ ] [CLIENT] Send `METADATA` when connecting to RELAY.

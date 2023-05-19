@@ -6,7 +6,7 @@ use std::{
 };
 
 use futures_channel::mpsc::UnboundedSender;
-use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use futures_util::{future, pin_mut, stream::TryStreamExt, FutureExt, StreamExt};
 
 use log::{debug, error, info};
 use serde_json::json;
@@ -142,7 +142,7 @@ async fn handle_connection(
 
   // Spawn the handler to run async
   let tx_clone = tx.clone();
-  tokio::spawn(async move {
+  let ping = async {
     loop {
       interval.tick().await;
 
@@ -150,9 +150,14 @@ async fn handle_connection(
       let ping_message = Message::Ping(vec![]);
       if let Err(err) = tx_clone.unbounded_send(ping_message) {
         error!("Error sending ping message: {err}");
+        break Err(err).map_err(|_err| {
+          tokio_tungstenite::tungstenite::Error::Protocol(
+            tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing,
+          )
+        });
       }
     }
-  });
+  };
 
   let broadcast_incoming = incoming.try_for_each(|msg| {
     debug!("Received a message from {addr}: {}", msg.to_text().unwrap());
@@ -235,8 +240,14 @@ async fn handle_connection(
 
   let receive_from_others = rx.map(Ok).forward(outgoing);
 
-  pin_mut!(broadcast_incoming, receive_from_others);
-  future::select(broadcast_incoming, receive_from_others).await;
+  // pin_mut!(broadcast_incoming, receive_from_others, ping);
+  // future::select(broadcast_incoming, receive_from_others).await;
+  let boxed_broadcast_incoming = broadcast_incoming.boxed();
+  let receive_from_others = receive_from_others.boxed();
+  let ping = ping.boxed();
+
+  let (_, _, _) =
+    future::select_all(vec![boxed_broadcast_incoming, receive_from_others, ping]).await;
 
   // If the code reaches this part it is because some of the futures above
   // (namely `broadcast_incoming` or `receive_from_others`) is done (connection is closed for some reason)
@@ -283,7 +294,7 @@ pub async fn initiate_relay() -> Result<(), MainError> {
         }
         .as_json();
         send_message_to_client(client.tx.clone(), notice_event);
-        client.tx.close_channel();
+        client.tx.unbounded_send(Message::Close(None)).unwrap();
       }
     }
     .await;
