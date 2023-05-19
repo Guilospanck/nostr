@@ -156,6 +156,7 @@ async fn handle_connection(
           )
         });
       }
+      debug!("Sent ping to {addr}.");
     }
   };
 

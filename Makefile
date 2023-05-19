@@ -36,3 +36,6 @@ run-all-clippy: relay-run-clippy client-run-clippy nostr-sdk-run-clippy
 
 run-all-tests: relay-run-tests client-run-tests nostr-sdk-run-tests
 
+##! Only in dev
+relay-upload-compiled-to-server:
+	$(MAKE) -C deploy/ relay-upload-compiled-to-server
