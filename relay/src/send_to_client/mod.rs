@@ -10,10 +10,7 @@ pub struct OutboundInfo {
 }
 
 pub fn send_message_to_client(tx: Tx, content: String) {
-  debug!("===============================================================");
-  debug!("Sending message to client:");
   debug!("{content}");
-  debug!("===============================================================");
   tx.unbounded_send(Message::Text(content))
     .unwrap();
 }
