@@ -54,7 +54,7 @@ impl EventsDB<'_> {
     table.iter().unwrap().for_each(|event| {
       let evt = event.unwrap();
       let event_value = evt.1.value();
-      let event_deserialized: Event = serde_json::from_str(event_value).unwrap();
+      let event_deserialized: Event = Event::from_json(event_value).unwrap();
       events.push(event_deserialized);
     });
 

@@ -80,7 +80,7 @@ pub fn on_request_message(
         } else {
           events_added_length - 1
         };
-        // Get up to the limit of the filter
+        // Get up to the limit defined by the filter
         let slice = &events_added_for_this_filter.clone()[..limit];
         events_added_for_this_filter = slice.to_vec();
       }

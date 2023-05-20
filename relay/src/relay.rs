@@ -9,7 +9,6 @@ use futures_channel::mpsc::UnboundedSender;
 use futures_util::{future, pin_mut, stream::TryStreamExt, FutureExt, StreamExt};
 
 use log::{debug, error, info};
-use serde_json::json;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{self, Duration};
 use tokio_tungstenite::tungstenite::Message;
@@ -133,7 +132,7 @@ async fn handle_connection(
   info!("WebSocket connection established: {addr}");
 
   // Start a periodic timer to send ping messages
-  let ping_interval = Duration::from_secs(5);
+  let ping_interval = Duration::from_secs(20);
   let mut interval = time::interval(ping_interval);
 
   let (tx, rx) = futures_channel::mpsc::unbounded();
@@ -178,7 +177,7 @@ async fn handle_connection(
         &mut clients,
         addr,
       );
-      // Send NOTICE event to inform that the subscription was closed or not
+      // Send NOTICE event to inform if the subscription was closed or not
       let message = if closed {
         "Subscription ended.".to_owned()
       } else {
@@ -204,8 +203,7 @@ async fn handle_connection(
 
       // Send one event at a time
       for event_message in events_to_send_to_client {
-        let events_stringfied = json!(event_message).to_string();
-        send_message_to_client(tx.clone(), events_stringfied);
+        send_message_to_client(tx.clone(), event_message.as_json());
       }
 
       // Send EOSE event to indicate end of stored events
@@ -241,8 +239,9 @@ async fn handle_connection(
 
   let receive_from_others = rx.map(Ok).forward(outgoing);
 
-  // pin_mut!(broadcast_incoming, receive_from_others, ping);
-  // future::select(broadcast_incoming, receive_from_others).await;
+  // This has to be done in order to:
+  // - pin the future in the heap (Box::pin)
+  // - be able to compose the vec in `select_all` (all will have the same "Box" type)
   let boxed_broadcast_incoming = broadcast_incoming.boxed();
   let receive_from_others = receive_from_others.boxed();
   let ping = ping.boxed();
