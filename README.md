@@ -2,6 +2,8 @@
 
 ## TODO
 
+### Required
+
 - [x] Change `unreachable()` at line 80 of `relay.rs`. Whenever someone sends something that cannot be parsed as EVENT, REQUEST or CLOSE, it breaks
 - [x] Fix `close` message closing the connection even with different id
 - [x] Verify `PoisonError` when client closes connection with Ctrl C
@@ -37,23 +39,26 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [CLIENT/RELAY] Improve error and normal functioning logging/handling (`env::logger`, `tracing`).
 - [x] [ALL] Create Makefiles (just like the `relay` one) and change githooks to use them.
 - [x] [CLIENT/RELAY] Check why GithubActions is failing. Didn't do anything. Just worked again.
-- [ ] [RELAY] Change the way Relay reads from DB (putting all that data in memory is not the best case scenario).
-- [ ] [RELAY] Maybe I can close a channel by sending `tx.unbounded_send(Message::Close()).unwrap()`.
-- [ ] [RELAY] Improve cross-compilation to darwin and windows.
+- [x] [RELAY] Maybe I can close a channel by sending `tx.unbounded_send(Message::Close()).unwrap()`.
 - [ ] [RELAY] Should check event to verify if the signature is valid.
 - [ ] [CLIENT] Should sign events properly.
 - [ ] [CLIENT] Send `METADATA` when connecting to RELAY.
 - [ ] [CLIENT] When client is sending message, it is alternating between different relays <--.
-- [ ] [CLIENT/RELAY] Add data validation to prevent panics.
-- [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
-- [ ] [CLIENT] Should save its own events.
+- [ ] [CLIENT] Clients should NOT be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own filters in order to request data from different relays.
 - [ ] [CLIENT] Should have a way of handling duplicated events, since a client can be connected to multiple relays.
 - [ ] [CLIENT] Must validate signature.
-- [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
-- [ ] Finish the implementation of all the required NIPs (just `NIP01`)
+- [ ] [CLIENT/RELAY] Finish the implementation of all the required NIPs (just `NIP01`)
+
+### Improvements
+
+- [ ] [CLIENT] Should save its own events.
+- [ ] [RELAY] Improve cross-compilation to darwin and windows.
+- [ ] [RELAY] Change the way Relay reads from DB (putting all that data in memory is not the best case scenario).
+- [ ] [CLIENT/RELAY] Add data validation to prevent panics.
 - [ ] [CLIENT/RELAY] Check `tracing`.
-- [ ] Implement `optional` NIPs
+- [ ] [CLIENT/RELAY] Implement `optional` NIPs
+- [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
 
 ## NIPs implemented
 
@@ -62,30 +67,30 @@ It is working. The problem was with sending the message as BINARY to the client.
 
 ## How to run
 
-Go to `relay`:
+Both `client`, `relay` and `nostr-sdk` read from `.env` variables to work. If it is not found, it is going to use the default values.
+You can find `.env` example files inside each folder with the name `example.env`. Create a `.env` file inside each of them with the values
+you desire.
 
 ```bash
-cargo run
+##! Inside each folder
+cp example.env .env
 ```
 
-it will start listening on the `127.0.0.1:8080` or you can also pass the `host:port` to it like:
+### Relay
 
 ```bash
-cargo run 127.0.0.1:8080
+make relay-run
 ```
 
-Then go to `client` and run:
+Will start listening on the value defined by the `RELAY_HOST` environment variable. If it doesn't find it, will default to `0.0.0.0:8080`.
+
+### Client
 
 ```bash
-cargo run
+make client-run
 ```
 
-Client will try to connect automatically to the following addresses (therefore, don't change your `relay` right now
-to a different address other than `127.0.0.1:8080` or `127.0.0.1:8081` :P or then change the `client` implementation to read from args):
-
-```rs
-pub const LIST_OF_RELAYS: [&str; 2] = ["ws://127.0.0.1:8080/", "ws://127.0.0.1:8081/"];
-```
+Client will try to connect automatically to the addresses defined by the `RELAY_LIST` environment variable. If: If it doesn't find it, will default to `ws://127.0.0.1:8080/`.
 
 ## Debugging
 

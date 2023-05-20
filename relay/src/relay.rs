@@ -263,9 +263,7 @@ pub enum MainError {
 
 #[tokio::main]
 pub async fn initiate_relay() -> Result<(), MainError> {
-  let addr = env::args()
-    .nth(1)
-    .unwrap_or_else(|| "0.0.0.0:8080".to_string());
+  let addr = env::var("RELAY_HOST").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
   // Read events from DB
   let events_db = EventsDB::new().unwrap();
