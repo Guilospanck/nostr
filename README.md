@@ -43,7 +43,7 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [ ] [RELAY] Should check event to verify if the signature is valid.
 - [ ] [CLIENT] Should sign events properly.
 - [ ] [CLIENT] Send `METADATA` when connecting to RELAY.
-- [ ] [CLIENT] When client is sending message, it is alternating between different relays.
+- [ ] [CLIENT] When client is sending message, it is alternating between different relays <--.
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
 - [ ] [CLIENT] Clients should not be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own events.

@@ -14,9 +14,9 @@ use nostr_sdk::filter::Filter;
 use crate::db::{get_client_keys, Keys};
 
 const LIST_OF_RELAYS: [&str; 2] = [
-  // "wss://nostr-relay.guilospanck.com",
+  "wss://nostr-relay.guilospanck.com",
   "ws://127.0.0.1:8080/",
-  "ws://127.0.0.1:8081/",
+  // "ws://127.0.0.1:8081/",
 ];
 
 /// Our helper method which will read data from stdin and send it along the
@@ -58,7 +58,9 @@ async fn send_initial_message(
 
   let mut subs_id = subscriptions_ids.lock().unwrap();
   subs_id.push(subscription_id.clone());
-
+  
+  // ["REQ","subs-to-lenovo-iris",{"authors":["614a695bab54e8dc98946abdb8ec019599ece6dada0c23890977d0fa128081d6"]}]
+  // ["REQ","subs-to-damus",{"authors":["685e4c035f2c46102681c02295bf5d134d501472c62b014a5bae4cf6a976af57"],"limit":3}]
   // ["REQ","some-random-subs-id",{"ids":["ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"]},{"authors":["5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835"]}]
   // ["EVENT",{"id":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
   // ["EVENT",{"id":"05b25af3-4250-4fbf-8ef5-97220858f9ab","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","wss://relay.damus.io"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}]
@@ -81,7 +83,7 @@ async fn handle_connection(
   let url = url::Url::parse(&connect_addr).unwrap();
 
   let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-  info!("WebSocket handshake has been successfully completed");
+  info!("WebSocket handshake to {connect_addr} has been successfully completed");
 
   let (tx, rx) = futures_channel::mpsc::unbounded();
 
@@ -101,7 +103,7 @@ async fn handle_connection(
     incoming.for_each(|message| async {
       match message {
         Ok(msg) => {
-          debug!("Received message from relay: {}", msg.to_text().unwrap());
+          debug!("Received message from relay {connect_addr}: {}", msg.to_text().unwrap());
         }
         Err(err) => {
           error!("[ws_to_stdout] {err}");
