@@ -2,8 +2,13 @@
 name = "relay"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Guilherme Pereira <guilospanck@protonmail.com>"]
+description = "A relay implementation for the Nostr protocol"
+readme = "README.md"
+repository = "https://github.com/Guilospanck/nostr/tree/main/relay"
+license = "MIT"
+keywords = ["nostr", "server", "relay"]
+categories = ["network-programming", "web-programming"]
 
 [dependencies]
 bitcoin_hashes = { version = "0.11.0", features = ["std"] }
