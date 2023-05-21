@@ -23,17 +23,16 @@ pub enum TagKind {
   /// (Therefore it should only be used when the "e" tag is being used with
   /// `root` or `reply`).
   /// It has the following format:
-  /// ```
-  /// ["p", <pub-key> or <list-of-pub-keys-of-those-involved-in-the-reply-thread>, <relay-url>]
-  /// ```
+  /// 
+  /// `["p", <pub-key> or <list-of-pub-keys-of-those-involved-in-the-reply-thread>, <relay-url>]`
   ///
   PubKey,
   /// The event tag is used to, basically, reply to some other event.
   /// According to `NIP10`, which defines the `e` and `p` tags, it has
   /// the following format:
-  /// ```
-  /// ["e", <event-id>, <relay-url>, <marker>]
-  /// ```
+  /// 
+  /// `["e", <event-id>, <relay-url>, <marker>]`
+  /// 
   ///
   /// where:
   ///   - `<event-id>`: id of the other event that this event is replying/mentioning to.
