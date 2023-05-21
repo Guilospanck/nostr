@@ -1,4 +1,4 @@
-use bitcoin_hashes::{sha256, Hash};
+use bitcoin_hashes::{sha256, Hash, hex::ToHex};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -23,7 +23,7 @@ impl EventId {
   ) -> Self {
     let data = json!([0, pubkey, created_at, kind, tags, content]).to_string();
     let hash = sha256::Hash::hash(data.as_bytes());
-    Self(hash.to_string())
+    Self(hash.to_hex())
   }
 }
 

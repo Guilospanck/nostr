@@ -1,5 +1,8 @@
+use std::str::FromStr;
+
+use secp256k1::{schnorr, Secp256k1};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 // Event Modules
 pub mod id;
@@ -22,7 +25,7 @@ pub enum Error {
   #[error(transparent)]
   Json(#[from] serde_json::Error),
   #[error("Invalid data")]
-  InvalidData
+  InvalidData,
 }
 
 ///
@@ -88,6 +91,27 @@ impl Event {
       content,
       ..Default::default()
     }
+  }
+
+  pub fn check_event_id(&self) -> bool {
+    EventId::new(
+      self.pubkey.clone(),
+      self.created_at,
+      self.kind,
+      self.tags.clone(),
+      self.content.clone(),
+    )
+    .0 == self.id
+  }
+
+  pub fn check_event_signature(&self) -> bool {
+    let secp = Secp256k1::new();
+    let sig = match schnorr::Signature::from_str(&self.sig) {
+      Ok(signature) => signature,
+      Err(_) => return false,
+    };
+
+    crate::schnorr::verify_schnorr(&secp, self.id.clone(), sig, self.pubkey.clone()).unwrap_or(false)
   }
 
   /// Deserializes from [`Value`]
@@ -193,21 +217,52 @@ mod tests {
   #[test]
   fn test_complete_event_serialize_and_deserialize_correctly() {
     let (expected_event, expected_serialized) = make_sut(false, false);
-    assert_eq!(expected_event, Event::from_json(&expected_serialized).unwrap());
+    assert_eq!(
+      expected_event,
+      Event::from_json(&expected_serialized).unwrap()
+    );
     assert_eq!(expected_serialized, expected_event.as_json());
   }
 
   #[test]
   fn test_event_tags_without_relay_url_serialize_and_deserialize_correctly() {
     let (expected_event, expected_serialized) = make_sut(true, false);
-    assert_eq!(expected_event, Event::from_json(&expected_serialized).unwrap());
+    assert_eq!(
+      expected_event,
+      Event::from_json(&expected_serialized).unwrap()
+    );
     assert_eq!(expected_serialized, expected_event.as_json());
   }
 
   #[test]
   fn test_event_tags_without_marker_and_deserialize_correctly() {
     let (expected_event, expected_serialized) = make_sut(false, true);
-    assert_eq!(expected_event, Event::from_json(&expected_serialized).unwrap());
+    assert_eq!(
+      expected_event,
+      Event::from_json(&expected_serialized).unwrap()
+    );
     assert_eq!(expected_serialized, expected_event.as_json());
+  }
+
+  #[test]
+  fn check_event_id() {
+    let (expected_event, _) = make_sut(false, true);
+    assert_eq!(expected_event.check_event_id(), false);
+
+    let event_with_correct_signature = Event::from_value(
+      json!({"content":"potato","created_at":1684589418,"id":"00960bd35499f8c63a4f65e79d6b1a2b7f1b8c97e76652325567b78c496350ae","kind":1,"pubkey":"614a695bab54e8dc98946abdb8ec019599ece6dada0c23890977d0fa128081d6","sig":"bf073c935f71de50ec72bdb79f75b0bf32f9049305c3b22f97c06422c6f2edc86e0d7e07d7d7222678b238b1daee071be5f6fa653c611971395ec0d1c6407caf","tags":[]}),
+    ).unwrap();
+    assert_eq!(event_with_correct_signature.check_event_id(), true);
+  }
+
+  #[test]
+  fn check_event_signature() {
+    let (expected_event, _) = make_sut(false, true);
+    assert_eq!(expected_event.check_event_signature(), false);
+
+    let event_with_correct_signature = Event::from_value(
+      json!({"content":"potato","created_at":1684589418,"id":"00960bd35499f8c63a4f65e79d6b1a2b7f1b8c97e76652325567b78c496350ae","kind":1,"pubkey":"614a695bab54e8dc98946abdb8ec019599ece6dada0c23890977d0fa128081d6","sig":"bf073c935f71de50ec72bdb79f75b0bf32f9049305c3b22f97c06422c6f2edc86e0d7e07d7d7222678b238b1daee071be5f6fa653c611971395ec0d1c6407caf","tags":[]}),
+    ).unwrap();
+    assert_eq!(event_with_correct_signature.check_event_signature(), true);
   }
 }
