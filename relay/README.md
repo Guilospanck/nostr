@@ -1,5 +1,63 @@
 # Relay
 
+This is the relay part of the Nostr protocol. Check [NIPs implemented](#nips-implemented) to see which NIPs are currently implemented.
+
+## Running
+
+There are basically three (3) ways you can run it at the moment, using [Local Rust](#local-rust), [Docker](#docker) or [Compiled](#compiled).
+
+### Local Rust
+
+Here you'll need [Rust](https://www.rust-lang.org/tools/install). Just clone the repository, go into the `relay/` folder and run `make run`. The server will start listening on `0.0.0.0:8080`.
+
+### Docker
+
+For this part you'll need [Docker engine](https://docs.docker.com/engine/install/). One important thing to notice here is that you need to run the `docker build` command from the root (one level above `relay/`), as it needs to have access to `nostr-sdk` folder as well to build `relay`. You can run do it by running:
+
+```sh
+# root directory
+docker build -t nostr-relay -f relay/Dockerfile . 
+```
+
+> To build it for different targets you can check the `build/` folder.
+
+### Compiled
+
+It is as simple as:
+
+```bash
+make build-debug-mode
+# or
+make build-release-mode
+```
+
+Then you can run it with:
+
+```bash
+./target/{release | debug}/relay 
+# or
+make cargo run --release
+# or
+make cargo run
+```
+
+Or just copy the binary and run it somewhere.
+
+> See [Cross-Compilation](#cross-compilation) to build it for different architectures.
+
+## NIPs implemented
+
+As the relay is more of a "dumb rock", the most necessary thing for it to work is to implement the NIP01. Virtually speaking, it can work with any client that implements the Nostr protocol. Whenever it has some specific tag that it doesn't know (i.e.: it is not `e` or `p` tags), it will parse it into a custom tag.
+
+- [x] NIP 01
+- [x] NIP 10
+
+## Cross-compilation
+
+### Requirements
+
+This whole step is condensed into the `Makefile` script. It may take a while on first iteration.
+
 You will need some libraries to compile this:
 
 - `Cross`:
@@ -29,15 +87,13 @@ Also, be sure to have in your `.rc` file (`.bashrc`, `.zshrc`) if using `colima`
 export DOCKER_HOST="unix://$HOME/.colima/docker.sock"
 ```
 
-## Cross-compilation
-
-This whole step is condensed into the `Makefile` script. It may take a while on first iteration. Just run:
+### Compiling
 
 ```sh
 make compile-to-x86_64-unknown-linux-gnu
 ```
 
-Libs necessary to compile the project (present in the `cross-pre_build.sh` file):
+Libs necessary to compile the project (present in the `pre_build.sh` file):
 
 ```sh
 apt-get update
