@@ -40,7 +40,7 @@ jobs:
     # Build 
     - name: Build
       working-directory: ${{ matrix.directories }}
-      run: cargo build
+      run: cargo build $CARGO_OPTIONS
 
     # Cache
     - name: Configure cache
@@ -62,12 +62,13 @@ jobs:
         cargo test --doc
 
     # Coverage
+    ##! CARGO_INCREMENTAL, RUSTFLAGS, RUSTDOCFLAGS - added to CARGO_OPTIONS in cargo test needed for code coverage
     - name: Generate test result and coverage report
       working-directory: ${{ matrix.directories }}
       run: |
         find . -name '*.gcda' -delete
         cargo install grcov --force;
-        cargo test --tests;
+        cargo test $CARGO_OPTIONS --tests;
         zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`;
         grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" -o lcov.info;
 
