@@ -40,9 +40,9 @@ jobs:
     # Build 
     - name: Build
       working-directory: ${{ matrix.directories }}
-      run: cargo build $CARGO_OPTIONS
+      run: cargo build
 
-    # cache
+    # Cache
     - name: Configure cache
       uses: actions/cache@v2
       with:
@@ -54,24 +54,27 @@ jobs:
           target/
         key: test-${{ runner.os }}-cargo-${{ matrix.rust }}-project-${{ matrix.directories }}-${{ hashFiles('**/Cargo.lock') }}
 
-    # tests and coverage
+    # Tests
     - name: Run tests
       working-directory: ${{ matrix.directories }}
-      run: cargo test $CARGO_OPTIONS --tests
+      run: |
+        cargo test --tests
+        cargo test --doc
 
-    # # tests and coverage
-    # - name: Generate test result and coverage report
-    #   working-directory: ${{ matrix.directories }}
-    #   run: |
-    #     find . -name '*.gcda' -delete
-    #     cargo install grcov --force;
-    #     cargo test $CARGO_OPTIONS --tests;
-    #     zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`;
-    #     grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" -o lcov.info;
+    # Coverage
+    - name: Generate test result and coverage report
+      working-directory: ${{ matrix.directories }}
+      run: |
+        find . -name '*.gcda' -delete
+        cargo install grcov --force;
+        cargo test --tests;
+        zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`;
+        grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" -o lcov.info;
 
     # Upload to CodeCov
-    # - name: Upload to CodeCov
-    #   uses: codecov/codecov-action@v3
-    #   with:
-    #     files: ./lcov.info
-    #     fail_ci_if_error: true
+    - name: Upload to CodeCov
+      uses: codecov/codecov-action@v3
+      with:
+        working-directory: ${{ matrix.directories }}
+        files: ./lcov.info
+        fail_ci_if_error: true

@@ -1,0 +1,84 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+    branches:
+      - main
+      - "v*.*.*"
+
+jobs:
+  deploy:
+    name: Deploy packages
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+        directories:
+          - ./relay
+          - ./client
+          # - ./nostr-sdk
+        include:
+          - directories: ./relay
+            package-name: relay
+          - directories: ./client
+            package-name: client
+        target:
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - i686-unknown-linux-gnu
+          - i686-unknown-linux-musl
+          - arm-unknown-linux-gnueabi
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - x86_64-unknown-netbsd
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Install dependencies required to build it
+      - name: Install ssl, musl, wget...
+        run: |
+          apt-get update
+          apt-get install -y wget build-essential checkinstall zlib1g-dev openssl pkg-config libssl-dev
+          wget http://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
+          dpkg -i libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
+
+      # Setup Toolchain
+      - name: Setup Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+          target: ${{ matrix.target }}
+
+      # Build with cross
+      #! NOTE: using `marcopolo/cargo` fork to support the `working-directory` attribute
+      #! See: https://github.com/actions-rs/cargo/pull/59
+      - name: Build target
+        uses: marcopolo/cargo@master
+        with:
+          use-cross: true
+          working-directory: ${{ matrix.directories }}
+          command: build
+          args: --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        working-directory: ${{ matrix.directories }}
+        run: |
+          #strip target/${{ matrix.target }}/release/${{ matrix.package-name }}
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../package-${{ matrix.package-name }}-${{ matrix.target }}.tar.gz ${{ matrix.package-name }}
+          cd -
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        # TODO: if any of the build step fails, the release should be deleted.
+        with:
+          files: "package-*"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
