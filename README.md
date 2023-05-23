@@ -54,6 +54,7 @@ It is working. The problem was with sending the message as BINARY to the client.
 
 ### Improvements
 
+- [ ] [CLIENT/RELAY/SDK] Use cargo `workspaces` (maybe).
 - [ ] [CLIENT] Should save its own events.
 - [ ] [RELAY] Improve cross-compilation to darwin and windows.
 - [ ] [RELAY] Change the way Relay reads from DB (putting all that data in memory is not the best case scenario).
