@@ -1,7 +1,7 @@
 [build]
 build-std = false
 default-target = "x86_64-unknown-linux-gnu" # if this is set, does not need to pass `--target` to cross build command
-pre-build = "./cross_pre_build.sh" # Runs when the cross build program runs 
+pre-build = "./pre_build.sh" # Runs when the cross build program runs 
 
 [target.aarch64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
