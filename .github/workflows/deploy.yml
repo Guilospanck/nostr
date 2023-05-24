@@ -1,4 +1,4 @@
-name: Tests
+name: Deploy binaries
 
 on:
   push:
@@ -10,28 +10,28 @@ on:
 jobs:
   deploy:
     name: Deploy packages
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
           - stable
-        directories:
-          - ./relay
-          - ./client
-          # - ./nostr-sdk
-        include:
-          - directories: ./relay
-            package-name: relay
-          - directories: ./client
-            package-name: client
+        # directories:
+        #   - ./relay
+        #   # - ./client
+        #   # - ./nostr-sdk
+        # include:
+        #   - directories: ./relay
+        #     package-name: relay
+        #   # - directories: ./client
+        #   #   package-name: client
         target:
-          - aarch64-unknown-linux-gnu
-          - armv7-unknown-linux-gnueabihf
-          - i686-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu 
+          - armv7-unknown-linux-gnueabihf 
+          - i686-unknown-linux-gnu 
           - i686-unknown-linux-musl
-          - arm-unknown-linux-gnueabi
-          - x86_64-unknown-linux-gnu
+          - arm-unknown-linux-gnueabi 
+          - x86_64-unknown-linux-gnu 
           - x86_64-unknown-linux-musl
           - x86_64-unknown-netbsd
     steps:
@@ -43,9 +43,9 @@ jobs:
       - name: Install ssl, musl, wget...
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget build-essential checkinstall zlib1g-dev openssl pkg-config libssl-dev
-          sudo wget http://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
-          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
+          sudo apt-get install -y pkg-config libssl-dev musl-tools
+          # sudo wget http://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
+          # sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
 
       # Setup Toolchain
       - name: Setup Toolchain
@@ -56,25 +56,38 @@ jobs:
           override: true
           target: ${{ matrix.target }}
 
-      # Build with cross
-      #! NOTE: using `marcopolo/cargo` fork to support the `working-directory` attribute
-      #! See: https://github.com/actions-rs/cargo/pull/59
+      # # Install cross to build cross-compiling
+      # - name: Install cross
+      #   run: cargo install cross --git https://github.com/cross-rs/cross
+
       - name: Build target
-        uses: marcopolo/cargo@master
+        uses: actions-rs/cargo@v1
         with:
           use-cross: true
-          working-directory: ${{ matrix.directories }}
           command: build
           args: --release --target ${{ matrix.target }}
-
       - name: Package
         shell: bash
-        working-directory: ${{ matrix.directories }}
         run: |
-          #strip target/${{ matrix.target }}/release/${{ matrix.package-name }}
+          #strip target/${{ matrix.target }}/release/nostrss
           cd target/${{ matrix.target }}/release          
-          tar czvf ../../../package-${{ matrix.package-name }}-${{ matrix.target }}.tar.gz ${{ matrix.package-name }}
+          tar czvf ../../../package-${{ matrix.target }}.tar.gz relay client
           cd -
+
+      # # Build with cross
+      # - name: Build target
+      #   working-directory: ${{ matrix.directories }}
+      #   run: cross build --release --target ${{ matrix.target }}
+
+      # - name: Package
+      #   shell: bash
+      #   working-directory: ${{ matrix.directories }}
+      #   run: |
+      #     #strip target/${{ matrix.target }}/release/${{ matrix.package-name }}
+      #     cd target/${{ matrix.target }}/release          
+      #     tar czvf ../../../package-${{ matrix.package-name }}-${{ matrix.target }}.tar.gz ${{ matrix.package-name }}
+      #     cd -
+
       - name: Publish
         uses: softprops/action-gh-release@v1
         # TODO: if any of the build step fails, the release should be deleted.
