@@ -41,8 +41,8 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [CLIENT/RELAY] Check why GithubActions is failing. Didn't do anything. Just worked again.
 - [x] [RELAY] Maybe I can close a channel by sending `tx.unbounded_send(Message::Close()).unwrap()`.
 - [x] [RELAY] Should check event to verify if the signature is valid.
-- [ ] [RELAY] Fix Dockerfile. Take a look at [this](https://github.com/scsibug/nostr-rs-relay/blob/master/Dockerfile) for an example.
-- [ ] [RELAY] Generate binary release with Github Actions. See this [example](https://github.com/Asone/nostrss/blob/main/.github/workflows/release.yml)
+- [x] [RELAY] Fix Dockerfile. Take a look at [this](https://github.com/scsibug/nostr-rs-relay/blob/master/Dockerfile) for an example.
+- [x] [RELAY] Generate binary release with Github Actions. See this [example](https://github.com/Asone/nostrss/blob/main/.github/workflows/release.yml)
 - [ ] [CLIENT] Should sign events properly.
 - [ ] [CLIENT] Send `METADATA` when connecting to RELAY.
 - [ ] [CLIENT] When client is sending message, it is alternating between different relays <--.
