@@ -1,5 +1,5 @@
 compile-to-x86_64-unknown-linux-gnu:
-	cross build --release --target x86_64-unknown-linux-gnu -v
+	cross build --release --target x86_64-unknown-linux-gnu
 
 build-release-mode:
 	cargo build --release
