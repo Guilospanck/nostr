@@ -25,7 +25,7 @@ RUN cargo build --release --bin relay
 # Using `linux/amd64` OS arch (via digest)
 FROM debian:bookworm-slim@sha256:b396b38adb888af839a4b967ba919c49086987126500d6cd8f662531e202d038 AS runtime
 # Install necessary packages
-COPY ./relay/pre_build.sh /app/pre_build.sh
+COPY ./pre_build.sh /app/pre_build.sh
 RUN /app/pre_build.sh
 COPY --from=builder /app/relay/target/release/relay /usr/local/bin/relay
 ENTRYPOINT [ "/usr/local/bin/relay" ]
