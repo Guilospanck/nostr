@@ -1,35 +1,177 @@
 use std::{
-  env,
   sync::{Arc, Mutex},
+  time::{SystemTime, UNIX_EPOCH},
 };
 
-use futures_util::{future, pin_mut, stream::FuturesUnordered, StreamExt};
-use tokio::io::AsyncReadExt;
+use futures_util::{future, pin_mut, StreamExt};
+use serde::{Deserialize, Serialize};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use log::{debug, error, info};
 use uuid::Uuid;
 
-use nostr_sdk::client_to_relay_communication::request::ClientToRelayCommRequest;
 use nostr_sdk::event::id::EventId;
 use nostr_sdk::filter::Filter;
+use nostr_sdk::{
+  client_to_relay_communication::{
+    event::ClientToRelayCommEvent, request::ClientToRelayCommRequest,
+  },
+  event::{kind::EventKind, Event},
+};
 
 use crate::db::{get_client_keys, Keys};
 
-/// Our helper method which will read data from stdin and send it along the
-/// sender provided.
-/// Send STDIN to WS
-///
-async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
-  let mut stdin = tokio::io::stdin();
-  loop {
-    let mut buf = vec![0; 1024];
-    let n = match stdin.read(&mut buf).await {
-      Err(_) | Ok(0) => break,
-      Ok(n) => n,
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Metadata {
+  name: String,
+  about: String,
+  picture: String,
+}
+
+impl Metadata {
+  pub fn as_str(&self) -> String {
+    serde_json::to_string(self).unwrap()
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct Client {
+  relays: Arc<Mutex<Vec<String>>>,
+  subscriptions_ids: Arc<Mutex<Vec<String>>>,
+  keys: Keys,
+  metadata: Metadata,
+}
+
+impl Client {
+  pub fn new() -> Self {
+    let keys = get_client_keys().unwrap();
+    let default_relays: Vec<String> = vec![
+      "ws://127.0.0.1:8080/".to_string(),
+      "ws://127.0.0.1:8081/".to_string(),
+    ];
+
+    Self {
+      relays: Arc::new(Mutex::new(default_relays)),
+      keys,
+      subscriptions_ids: Arc::new(Mutex::new(Vec::<String>::new())),
+      ..Default::default()
+    }
+  }
+
+  pub fn name(&mut self, name: &str) -> &mut Self {
+    self.metadata.name = name.to_string();
+    self
+  }
+
+  pub fn about(&mut self, about: &str) -> &mut Self {
+    self.metadata.about = about.to_string();
+    self
+  }
+
+  pub fn picture(&mut self, picture: &str) -> &mut Self {
+    self.metadata.picture = picture.to_string();
+    self
+  }
+
+  pub fn add_relay(&mut self, relay: String) {
+    let mut relays = self.relays.lock().unwrap();
+    relays.push(relay);
+  }
+
+  pub fn remove_relay(&mut self, relay: String) {
+    let mut relays = self.relays.lock().unwrap();
+    relays.retain(|addr| *addr != relay);
+  }
+
+  fn get_timestamp_in_seconds(&self) -> u64 {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+      .duration_since(UNIX_EPOCH)
+      .expect("Time went backwards");
+    since_the_epoch.as_secs()
+  }
+
+  fn create_event(&self, kind: EventKind, content: String) -> Event {
+    let pubkey = &self.keys.public_key.to_string()[2..];
+    let created_at = self.get_timestamp_in_seconds();
+    let tags = vec![];
+
+    let mut event =
+      Event::new_without_signature(pubkey.to_string(), created_at, kind, tags, content);
+    event.sign_event(self.keys.private_key.as_bytes().to_vec());
+    event
+  }
+
+  pub fn publish_text_note(&self, note: String) {
+    let _to_publish = ClientToRelayCommEvent {
+      event: self.create_event(EventKind::Text, note),
+      ..Default::default()
     };
-    buf.truncate(n);
-    tx.unbounded_send(Message::binary(buf)).unwrap();
+  }
+
+  pub fn publish_metadata(&self) {
+    let _to_publish = ClientToRelayCommEvent {
+      event: self.create_event(EventKind::Metadata, self.metadata.as_str()),
+      ..Default::default()
+    };
+  }
+
+  pub fn subscribe(&self, filters: Vec<Filter>) {
+    let subscription_id = Uuid::new_v4().to_string();
+
+    let _filter_subscription = ClientToRelayCommRequest {
+      filters,
+      subscription_id,
+      ..Default::default()
+    }
+    .as_json();
+  }
+
+  pub fn close_connection(&self) {}
+
+  async fn _handle_connection(&self, relay: String) {
+    let url = url::Url::parse(&relay).unwrap();
+
+    let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+    info!("WebSocket handshake to {relay} has been successfully completed");
+
+    let (tx, rx) = futures_channel::mpsc::unbounded();
+
+    let (outgoing, incoming) = ws_stream.split();
+
+    // send initial message
+    send_initial_message(tx, self.subscriptions_ids.clone()).await;
+
+    let stdin_to_ws = rx.map(Ok).forward(outgoing);
+
+    // This will print to stdout whatever the WS sends
+    // (The WS is forwarding messages from other clients)
+    let ws_to_stdout = {
+      incoming.for_each(|message| async {
+        match message {
+          Ok(msg) => {
+            debug!(
+              "Received message from relay {relay}: {}",
+              msg.to_text().unwrap()
+            );
+          }
+          Err(err) => {
+            error!("[ws_to_stdout] {err}");
+          }
+        }
+      })
+    };
+
+    pin_mut!(stdin_to_ws, ws_to_stdout);
+    future::select(stdin_to_ws, ws_to_stdout).await;
+  }
+
+  #[tokio::main]
+  pub async fn connect(self) {
+    for relay in self.relays.lock().unwrap().iter() {
+      debug!("Connecting to relay {relay}");
+      // tokio::spawn(self.handle_connection(relay.to_string()));
+    }
   }
 }
 
@@ -65,84 +207,4 @@ async fn send_initial_message(
 
   tx.unbounded_send(Message::binary(filter_subscription.as_bytes()))
     .unwrap();
-}
-
-async fn handle_connection(
-  connect_addr: String,
-  subscriptions_ids: Arc<Mutex<Vec<String>>>,
-  _keys: Keys,
-) {
-  let url = url::Url::parse(&connect_addr).unwrap();
-
-  let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-  info!("WebSocket handshake to {connect_addr} has been successfully completed");
-
-  let (tx, rx) = futures_channel::mpsc::unbounded();
-
-  let (outgoing, incoming) = ws_stream.split();
-
-  // Spawn new thread to read from stdin and send to relay.
-  tokio::spawn(read_stdin(tx.clone()));
-
-  // send initial message
-  send_initial_message(tx, subscriptions_ids).await;
-
-  let stdin_to_ws = rx.map(Ok).forward(outgoing);
-
-  // This will print to stdout whatever the WS sends
-  // (The WS is forwarding messages from other clients)
-  let ws_to_stdout = {
-    incoming.for_each(|message| async {
-      match message {
-        Ok(msg) => {
-          debug!(
-            "Received message from relay {connect_addr}: {}",
-            msg.to_text().unwrap()
-          );
-        }
-        Err(err) => {
-          error!("[ws_to_stdout] {err}");
-        }
-      }
-    })
-  };
-
-  pin_mut!(stdin_to_ws, ws_to_stdout);
-  future::select(stdin_to_ws, ws_to_stdout).await;
-}
-
-#[tokio::main]
-pub async fn initiate_client() -> Result<(), redb::Error> {
-  let keys = get_client_keys()?;
-
-  let subscriptions_ids = Arc::new(Mutex::new(Vec::<String>::new()));
-
-  let relays_list = env::var("RELAY_LIST")
-    .as_ref()
-    .map(|list| {
-      let splitted: Vec<String> = list
-        .split(',')
-        .map(|ws_relay| ws_relay.to_string())
-        .collect();
-      splitted
-    })
-    .unwrap_or_else(|_| vec!["ws://127.0.0.1:8080/".to_string()]);
-
-  let connections: Vec<_> = relays_list
-    .iter()
-    .map(|addr| {
-      debug!("Connecting to relay {addr}");
-      tokio::spawn(handle_connection(
-        addr.to_string(),
-        subscriptions_ids.clone(),
-        keys.clone(),
-      ))
-    })
-    .collect();
-
-  let futures: FuturesUnordered<_> = connections.into_iter().collect();
-
-  let _: Vec<_> = futures.collect().await;
-
-  Ok(())
 }
