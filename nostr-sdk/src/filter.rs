@@ -1,3 +1,5 @@
+use std::vec;
+
 use serde::{Deserialize, Serialize};
 
 use crate::event::{id::EventId, kind::EventKind, PubKey, Timestamp};
@@ -34,6 +36,80 @@ pub struct Filter {
 }
 
 impl Filter {
+  pub fn new() -> Self {
+    Self::default()
+  }
+
+  pub fn add_ids(&mut self, ids: Vec<String>) -> &mut Self {
+    if ids.is_empty() {
+      return self
+    }
+
+    let mut event_ids: Vec<EventId> = vec![];
+    for id in ids {
+      event_ids.push(EventId(id));
+    }
+
+    self.ids = Some(event_ids);
+    self
+  }
+
+  pub fn add_authors(&mut self, authors: Vec<String>) -> &mut Self {
+    if authors.is_empty() {
+      return self
+    }
+
+    self.authors = Some(authors);
+    self
+  }
+
+  pub fn add_kinds(&mut self, kinds: Vec<u64>) -> &mut Self {
+    if kinds.is_empty() {
+      return self
+    }
+
+    let mut event_kinds: Vec<EventKind> = vec![];
+    for kind in kinds {
+      event_kinds.push(EventKind::from(kind));
+    }
+
+    self.kinds = Some(event_kinds);
+    self
+  }
+
+  pub fn add_e_tags(&mut self, e_tags: Vec<String>) -> &mut Self {
+    if e_tags.is_empty() {
+      return self
+    }
+
+    self.e = Some(e_tags);
+    self
+  }
+
+  pub fn add_p_tags(&mut self, p_tags: Vec<String>) -> &mut Self {
+    if p_tags.is_empty() {
+      return self
+    }
+
+    self.p = Some(p_tags);
+    self
+  }
+
+  pub fn add_since(&mut self, since: u64) -> &mut Self {
+    self.since = Some(since);
+    self
+  }
+
+  pub fn add_until(&mut self, until: u64) -> &mut Self {
+    self.until = Some(until);
+    self
+  }
+
+  pub fn add_limit(&mut self, limit: u64) -> &mut Self {
+    self.limit = Some(limit);
+    self
+  }
+
   pub fn as_str(&self) -> String {
     serde_json::to_string(self).unwrap()
   }
@@ -50,6 +126,30 @@ mod tests {
   #[cfg(test)]
   use pretty_assertions::assert_eq;
   use serde_json::{json, Value};
+
+  #[test]
+  fn test_filter_chaining_methods() {
+    let ids = vec![String::from("id1"), String::from("id2")];
+    let authors = vec![String::from("author1"), String::from("author2")];
+    let kinds = vec![0, 1];
+    let e_tags = vec![String::from("e_tag1"), String::from("e_tag2")];
+    let p_tags = vec![String::from("p_tag1"), String::from("p_tag2")];
+    let since = 10u64;
+    let until = 11u64;
+    let limit = 12u64;
+
+    let mut filter_chained = Filter::new();
+    filter_chained.add_ids(ids.clone()).add_authors(authors.clone()).add_kinds(kinds.clone()).add_e_tags(e_tags.clone()).add_p_tags(p_tags.clone()).add_since(since).add_until(until).add_limit(limit);
+
+    assert_eq!(filter_chained.ids, Some(vec![EventId(ids[0].clone()), EventId(ids[1].clone())]));
+    assert_eq!(filter_chained.authors, Some(authors));
+    assert_eq!(filter_chained.kinds, Some(vec![EventKind::from(kinds[0]), EventKind::from(kinds[1])]));
+    assert_eq!(filter_chained.e, Some(e_tags));
+    assert_eq!(filter_chained.p, Some(p_tags));
+    assert_eq!(filter_chained.since, Some(since));
+    assert_eq!(filter_chained.until, Some(until));
+    assert_eq!(filter_chained.limit, Some(limit));
+  }
 
   #[test]
   fn from_string() {
