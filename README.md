@@ -1,4 +1,4 @@
-# nostr
+# nostr [![codecov](https://codecov.io/gh/Guilospanck/nostr/branch/main/graph/badge.svg?token=1CF85SBYD9)](https://codecov.io/gh/Guilospanck/nostr)
 
 ## How to run
 

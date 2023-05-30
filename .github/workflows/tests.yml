@@ -19,13 +19,13 @@ jobs:
       matrix:
         rust:
           - nightly
-        package:
-          - directory: ./relay
-            name: relay
-          - directory: ./client
-            name: client
-          - directory: ./nostr-sdk
-            name: nostr-sdk
+        # package:
+        #   - directory: ./relay
+        #     name: relay
+        #   - directory: ./client
+        #     name: client
+        #   - directory: ./nostr-sdk
+        #     name: nostr-sdk
 
     steps:
     # Checkout repository
@@ -42,7 +42,6 @@ jobs:
 
     # Build 
     - name: Build
-      working-directory: ${{ matrix.package.directory }}
       run: cargo build $CARGO_OPTIONS
 
     # Cache
@@ -55,11 +54,10 @@ jobs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: test-${{ runner.os }}-cargo-${{ matrix.rust }}-project-${{ matrix.package.directory }}-${{ hashFiles('**/Cargo.lock') }}
+        key: test-${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
 
     # Tests
     - name: Run tests
-      working-directory: ${{ matrix.package.directory }}
       run: |
         cargo test --tests
         cargo test --doc
@@ -67,18 +65,16 @@ jobs:
     # Coverage
     ##! CARGO_INCREMENTAL, RUSTFLAGS, RUSTDOCFLAGS - added to CARGO_OPTIONS in cargo test needed for code coverage
     - name: Generate test result and coverage report
-      working-directory: ${{ matrix.package.directory }}
       run: |
         find . -name '*.gcda' -delete
         cargo install grcov --force;
         cargo test $CARGO_OPTIONS --tests;
         zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`;
-        grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" -o ${{ matrix.package.name }}.info;
-        cat ${{ matrix.package.name }}.info >> final_coverage.info
+        grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" -o lcov.info;
 
     # Upload to CodeCov
     - name: Upload to CodeCov
       uses: codecov/codecov-action@v3
       with:
-        files: ./final_coverage.info
+        files: ./lcov.info
         fail_ci_if_error: true
