@@ -65,7 +65,8 @@ pub fn get_client_keys() -> Result<Keys, redb::Error> {
   if String::is_empty(&keys.private_key) || String::is_empty(&keys.public_key) {
     let generated = schnorr::generate_keys();
     keys.private_key = generated.private_key.display_secret().to_string();
-    keys.public_key = generated.public_key.to_string();
+    let pubkey = &generated.public_key.to_string()[2..];
+    keys.public_key = pubkey.to_string();
 
     write_to_db(&db, "private_key", &keys.private_key)?;
     write_to_db(&db, "public_key", &keys.public_key)?;
