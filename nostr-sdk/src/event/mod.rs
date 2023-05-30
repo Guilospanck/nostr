@@ -93,6 +93,13 @@ impl Event {
     }
   }
 
+  pub fn sign_event(&mut self, seckey: [u8; 32]) {
+    let secp = Secp256k1::new();
+    let msg = self.id.clone();
+    let signed = crate::schnorr::sign_schnorr(&secp, msg, seckey).unwrap();
+    self.sig = signed.to_string();
+  }
+
   pub fn check_event_id(&self) -> bool {
     EventId::new(
       self.pubkey.clone(),
@@ -110,8 +117,10 @@ impl Event {
       Ok(signature) => signature,
       Err(_) => return false,
     };
+    let msg = self.id.clone();
 
-    crate::schnorr::verify_schnorr(&secp, self.id.clone(), sig, self.pubkey.clone()).unwrap_or(false)
+    crate::schnorr::verify_schnorr(&secp, msg, sig, self.pubkey.clone())
+      .unwrap_or(false)
   }
 
   /// Deserializes from [`Value`]
@@ -264,5 +273,24 @@ mod tests {
       json!({"content":"potato","created_at":1684589418,"id":"00960bd35499f8c63a4f65e79d6b1a2b7f1b8c97e76652325567b78c496350ae","kind":1,"pubkey":"614a695bab54e8dc98946abdb8ec019599ece6dada0c23890977d0fa128081d6","sig":"bf073c935f71de50ec72bdb79f75b0bf32f9049305c3b22f97c06422c6f2edc86e0d7e07d7d7222678b238b1daee071be5f6fa653c611971395ec0d1c6407caf","tags":[]}),
     ).unwrap();
     assert_eq!(event_with_correct_signature.check_event_signature(), true);
+  }
+
+  #[test]
+  fn sign_event() {
+    let event_sut = make_sut(false, false);
+    let keys = crate::schnorr::generate_keys();
+    // In order to use Schnorr signatures, we have to drop the first byte of pubkey
+    let pubkey = &keys.public_key.to_string()[2..];
+    let mut event = Event::new_without_signature(
+      pubkey.to_string(),
+      event_sut.0.created_at,
+      event_sut.0.kind,
+      event_sut.0.tags,
+      event_sut.0.content
+    );
+
+    event.sign_event(keys.private_key.secret_bytes());
+
+    assert_eq!(event.check_event_signature(), true);
   }
 }
