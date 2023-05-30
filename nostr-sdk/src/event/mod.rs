@@ -93,7 +93,7 @@ impl Event {
     }
   }
 
-  pub fn sign_event(&mut self, seckey: [u8; 32]) {
+  pub fn sign_event(&mut self, seckey: Vec<u8>) {
     let secp = Secp256k1::new();
     let msg = self.id.clone();
     let signed = crate::schnorr::sign_schnorr(&secp, msg, seckey).unwrap();
@@ -289,7 +289,7 @@ mod tests {
       event_sut.0.content
     );
 
-    event.sign_event(keys.private_key.secret_bytes());
+    event.sign_event(keys.private_key.secret_bytes().to_vec());
 
     assert_eq!(event.check_event_signature(), true);
   }
