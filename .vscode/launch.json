@@ -8,18 +8,16 @@
       "name": "Debug Relay",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/relay/target/debug/relay",
+      "program": "${workspaceFolder}/target/debug/relay",
       "args": [],
-      "cwd": "${workspaceFolder}/relay",
       "preLaunchTask": "rust: cargo build --relay",
     },
     {
       "name": "Debug Client",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/client/target/debug/main",
+      "program": "${workspaceFolder}/target/debug/client",
       "args": [],
-      "cwd": "${workspaceFolder}/client/",
       "preLaunchTask": "rust: cargo build --client",
     }
   ]
