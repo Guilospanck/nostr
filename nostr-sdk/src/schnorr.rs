@@ -20,7 +20,7 @@ impl Default for AsymmetricKeys {
     let private_key = SecretKey::new(&mut rand::thread_rng());
     Self {
       private_key,
-      public_key: PublicKey::from_secret_key(&secp, &private_key)
+      public_key: PublicKey::from_secret_key(&secp, &private_key),
     }
   }
 }
@@ -55,7 +55,7 @@ pub enum SchnorrError {
 ///     use nostr_sdk::schnorr::*;
 ///     use secp256k1::Secp256k1;
 ///     use bitcoin_hashes::{sha256, hex::ToHex, Hash};
-/// 
+///
 ///     let seckey = [
 ///      59, 148, 11, 85, 134, 130, 61, 253, 2, 174, 59, 70, 27, 180, 51, 107, 94, 203, 174, 253, 102,
 ///      39, 170, 146, 46, 252, 4, 143, 236, 12, 136, 28,
@@ -100,7 +100,7 @@ pub fn sign_ecdsa<C: Signing>(
 ///     use nostr_sdk::schnorr::*;
 ///     use std::str::FromStr;
 ///     use secp256k1::{Secp256k1, ecdsa};
-/// 
+///
 ///     let seckey = [
 ///      59, 148, 11, 85, 134, 130, 61, 253, 2, 174, 59, 70, 27, 180, 51, 107, 94, 203, 174, 253, 102,
 ///      39, 170, 146, 46, 252, 4, 143, 236, 12, 136, 28,
@@ -153,7 +153,7 @@ pub fn verify_ecdsa<C: Verification>(
 ///     use nostr_sdk::schnorr::*;
 ///     use secp256k1::Secp256k1;
 ///     use bitcoin_hashes::{hex::ToHex, sha256, Hash};
-/// 
+///
 ///     let seckey = [
 ///      59, 148, 11, 85, 134, 130, 61, 253, 2, 174, 59, 70, 27, 180, 51, 107, 94, 203, 174, 253, 102,
 ///      39, 170, 146, 46, 252, 4, 143, 236, 12, 136, 28,
@@ -177,6 +177,7 @@ pub fn sign_schnorr<C: Signing>(
     }
     Err(err) => {
       log::error!("[sign_schnorr > SecretKey::from_slice] {err}");
+      let err_string = err.to_string();
       Err(SchnorrError::SECP256K1(err))
     }
   }
@@ -201,7 +202,7 @@ pub fn sign_schnorr<C: Signing>(
 ///     use nostr_sdk::schnorr::*;
 ///     use std::str::FromStr;
 ///     use secp256k1::{Secp256k1, schnorr};
-/// 
+///
 ///     let secp = Secp256k1::new();
 ///     let sig = match schnorr::Signature::from_str("bf073c935f71de50ec72bdb79f75b0bf32f9049305c3b22f97c06422c6f2edc86e0d7e07d7d7222678b238b1daee071be5f6fa653c611971395ec0d1c6407caf") {
 ///       Ok(signature) => signature,
@@ -292,7 +293,7 @@ mod tests {
   #[test]
   fn test_should_sign_schnorr_without_errors() {
     let sut: Sut = make_sut();
-    assert!(sign_schnorr(&sut.secp, sut.msg, sut.seckey.to_vec()).is_ok());
+    assert!(sign_schnorr(&sut.secp, sut.msg.clone(), sut.seckey.to_vec()).is_ok());
   }
 
   #[test]
