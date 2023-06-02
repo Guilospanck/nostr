@@ -3,14 +3,19 @@ use std::{
   sync::Arc,
   time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Mutex;
+use tokio::{net::TcpStream, sync::Mutex};
 
-use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use futures_util::{stream::FuturesUnordered, StreamExt, pin_mut, future};
+use futures_channel::mpsc::UnboundedSender;
+use futures_util::{
+  stream::{FuturesUnordered, SplitStream},
+  StreamExt,
+};
 use serde::{Deserialize, Serialize};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::{
+  connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
+};
 
-use log::{debug, info, error};
+use log::{debug, error, info};
 use uuid::Uuid;
 
 use nostr_sdk::filter::Filter;
@@ -36,11 +41,12 @@ impl Metadata {
   }
 }
 
-#[derive(Debug, Default)]
+type WsRx = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
+#[derive(Debug, Default, Clone)]
 struct RelayData {
   url: String,
   tx: Option<UnboundedSender<Message>>,
-  _rx: Option<UnboundedReceiver<Message>>,
+  rx: Option<Arc<Mutex<WsRx>>>,
 }
 
 #[derive(Debug, Default)]
@@ -58,12 +64,12 @@ impl Client {
       RelayData {
         url: "ws://127.0.0.1:8080/".to_string(),
         tx: None,
-        _rx: None,
+        rx: None,
       },
       RelayData {
         url: "ws://127.0.0.1:8081/".to_string(),
         tx: None,
-        _rx: None,
+        rx: None,
       },
     ];
 
@@ -95,7 +101,7 @@ impl Client {
     relays.push(RelayData {
       url: relay,
       tx: None,
-      _rx: None,
+      rx: None,
     });
   }
 
@@ -194,30 +200,42 @@ impl Client {
     let _: Vec<_> = futures.collect().await;
   }
 
-  // pub fn notifications(&self) {
-  //   let stdin_to_ws = rx.map(Ok).forward(outgoing);
+  #[tokio::main]
+  pub async fn notifications(&self) {
+    let relays = self.relays.lock().await;
+    let mut notifications = Vec::new();
 
-  //   // This will print to stdout whatever the WS sends
-  //   // (The WS is forwarding messages from other clients)
-  //   let ws_to_stdout = {
-  //     incoming.for_each(|message| async {
-  //       match message {
-  //         Ok(msg) => {
-  //           debug!(
-  //             "Received message from relay {relay}: {}",
-  //             msg.to_text().unwrap()
-  //           );
-  //         }
-  //         Err(err) => {
-  //           error!("[ws_to_stdout] {err}");
-  //         }
-  //       }
-  //     })
-  //   };
+    for relay in relays.iter() {
+      if let Some(ws_rx) = &relay.rx {
+        let relay_url = relay.url.clone();
+        let rx = Arc::clone(ws_rx);
+        let notification = tokio::spawn(async move {
+          let mut rx = rx.lock().await;
+          while let Some(message) = rx.next().await {
+            match message {
+              Ok(msg) => {
+                debug!(
+                  "Received message from relay {}: {}",
+                  relay_url,
+                  msg.to_text().unwrap()
+                );
+              }
+              Err(err) => {
+                error!("[ws_to_stdout] {}", err);
+              }
+            }
+          }
+        });
 
-  //   pin_mut!(stdin_to_ws, ws_to_stdout);
-  //   future::select(stdin_to_ws, ws_to_stdout).await;
-  // }
+        notifications.push(notification);
+      }
+    }
+
+    drop(relays);
+
+    let futures: FuturesUnordered<_> = notifications.into_iter().collect();
+    let _: Vec<_> = futures.collect().await;
+  }
 }
 
 async fn handle_connection(
@@ -234,38 +252,24 @@ async fn handle_connection(
     relay.url
   );
 
+  let (ws_write, ws_read) = ws_stream.split();
+  relay.rx = Some(Arc::new(Mutex::new(ws_read)));
+
+  // mpsc stands for "multiple producers, single consumer"
+  // unbounded is when the channel has infinity capacity
+  // this unbounded channel is created to have different parts of the code
+  // that can send messages to the sink (write) part of the websocket
   let (tx, rx) = futures_channel::mpsc::unbounded();
   relay.tx = Some(tx.clone());
-  // relay.rx = Some(rx);
-
-  let (outgoing, incoming) = ws_stream.split();
 
   // send initial message
   publish_metadata(tx, metadata.as_json());
 
-  let stdin_to_ws = rx.map(Ok).forward(outgoing);
-
-  // This will print to stdout whatever the WS sends
-  // (The WS is forwarding messages from other clients)
-  let ws_to_stdout = {
-    incoming.for_each(|message| async {
-      match message {
-        Ok(msg) => {
-          debug!(
-            "Received message from relay {}: {}",
-            relay.url,
-            msg.to_text().unwrap()
-          );
-        }
-        Err(err) => {
-          error!("[ws_to_stdout] {err}");
-        }
-      }
-    })
-  };
-
-  pin_mut!(stdin_to_ws, ws_to_stdout);
-  future::select(stdin_to_ws, ws_to_stdout).await;
+  // `tx` and `rx` are connected (two sides of the same channel)
+  // when we receive something on the `rx` (in other words, we sent something using `tx`)
+  // it will forward it to the write part of our websocket (`ws_write`) and this is where
+  // the message will be forwarded to the server.
+  let _ = rx.map(Ok).forward(ws_write).await;
 }
 
 fn publish_metadata(tx: futures_channel::mpsc::UnboundedSender<Message>, to_publish: String) {
