@@ -62,7 +62,7 @@ pub fn get_client_keys() -> Result<Keys, redb::Error> {
   keys.public_key = public_key;
 
   // if keys are empty, generate new ones
-  if keys.private_key.len() == 0 || keys.public_key.len() == 0 {
+  if keys.private_key.is_empty() || keys.public_key.is_empty() {
     let generated = schnorr::generate_keys();
     keys.private_key = generated.private_key.secret_bytes().to_vec();
     let pubkey = &generated.public_key.to_string()[2..];

@@ -177,7 +177,6 @@ pub fn sign_schnorr<C: Signing>(
     }
     Err(err) => {
       log::error!("[sign_schnorr > SecretKey::from_slice] {err}");
-      let err_string = err.to_string();
       Err(SchnorrError::SECP256K1(err))
     }
   }

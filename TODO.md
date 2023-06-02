@@ -42,7 +42,8 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [RELAY] Fix Dockerfile. Take a look at [this](https://github.com/scsibug/nostr-rs-relay/blob/master/Dockerfile) for an example.
 - [x] [RELAY] Generate binary release with Github Actions. See this [example](https://github.com/Asone/nostrss/blob/main/.github/workflows/release.yml)
 - [x] [CLIENT] Should sign events properly.
-- [ ] [CLIENT] Send `METADATA` when connecting to RELAY.
+- [x] [CLIENT] Send `METADATA` when connecting to RELAY.
+- [ ] [CLIENT] The first time it runs (without a DB created, it is throwing an err that table `keys` does not exist).
 - [ ] [CLIENT] When client is sending message, it is alternating between different relays <--.
 - [ ] [CLIENT] Clients should NOT be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own filters in order to request data from different relays.
