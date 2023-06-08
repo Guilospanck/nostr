@@ -1,5 +1,6 @@
 use client::client;
 use env_logger::Env;
+use futures_util::join;
 
 #[tokio::main]
 async fn main() {
@@ -9,4 +10,10 @@ async fn main() {
     .unwrap();
   let client = client::Client::new();
   client.connect().await;
+  client.get_notifications().await;
+
+  let ctrl_c = async {
+    tokio::signal::ctrl_c().await.unwrap();
+  };
+  join!(ctrl_c);
 }

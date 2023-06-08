@@ -5,7 +5,6 @@ use futures_util::StreamExt;
 use log::debug;
 use log::error;
 use log::info;
-use tokio::join;
 use tokio::sync::{
   mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
   Mutex,
@@ -105,7 +104,6 @@ impl RelayData {
 #[derive(Debug)]
 pub struct RelayPool {
   relays: Arc<Mutex<HashMap<String, RelayData>>>,
-  // TODO: this will be used when we add new relays to the pool.
   pool_task_sender: PoolTaskSender,
   relay_pool_task: RelayPoolTask,
 }
@@ -137,12 +135,13 @@ impl RelayPool {
     relays.clone()
   }
 
-  pub async fn add_relay(&self, url: String) {
+  pub async fn add_relay(&self, url: String, metadata: Message) {
     let mut relays = self.relays().await;
 
     if relays.get(&url).is_none() {
       let relay = RelayData::new(url.clone(), self.pool_task_sender.clone());
-      relays.insert(url, relay);
+      relays.insert(url, relay.clone());
+      relay.connect(metadata).await;
     }
   }
 
@@ -154,16 +153,14 @@ impl RelayPool {
   pub async fn connect(&self, metadata: Message) {
     let relays = self.relays().await;
 
-    let mut relay_pool_task = self.relay_pool_task.clone();
-    let listener = tokio::spawn(async move {
-      relay_pool_task.run().await;
-    });
-
     for relay in relays.values() {
       relay.connect(metadata.clone()).await;
     }
+  }
 
-    let _ = join!(listener);
+  pub async fn notifications(&self) {
+    let mut relay_pool_task = self.relay_pool_task.clone();
+    tokio::spawn(async move { relay_pool_task.run().await });
   }
 
   pub async fn broadcast_messages(&self, message: Message) {
@@ -173,16 +170,6 @@ impl RelayPool {
       relay.send_message(message.clone());
     }
   }
-
-  // pub async fn send_message_to_relay(&self, url: String, message: Message) {
-  //   let relays = self.relays().await;
-  //   match relays.get(&url) {
-  //     Some(relay) => relay.relay_tx.send(message).unwrap(),
-  //     None => {
-  //       error!("Relay does not exist in the pool")
-  //     }
-  //   }
-  // }
 }
 
 #[derive(Debug, Clone)]

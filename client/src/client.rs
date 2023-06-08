@@ -80,7 +80,10 @@ impl Client {
   }
 
   pub async fn add_relay(&mut self, relay: String) {
-    self.pool.add_relay(relay).await;
+    self
+      .pool
+      .add_relay(relay.clone(), Message::from(self.get_event_metadata()))
+      .await;
   }
 
   pub async fn remove_relay(&mut self, relay: String) {
@@ -106,10 +109,7 @@ impl Client {
     event
   }
 
-  pub async fn publish_text_note(
-    &self,
-    note: String,
-  ) {
+  pub async fn publish_text_note(&self, note: String) {
     let to_publish = ClientToRelayCommEvent {
       event: self.create_event(EventKind::Text, note),
       ..Default::default()
@@ -156,5 +156,9 @@ impl Client {
       .pool
       .connect(Message::from(self.get_event_metadata()))
       .await;
+  }
+
+  pub async fn get_notifications(&self) {
+    self.pool.notifications().await;
   }
 }
