@@ -79,19 +79,13 @@ impl Client {
     self
   }
 
-  // pub async fn add_relay(&mut self, relay: String) {
-  //   let mut relays = self.relays.lock().await;
-  //   relays.push(RelayData {
-  //     url: relay,
-  //     tx: None,
-  //     rx: None,
-  //   });
-  // }
+  pub async fn add_relay(&mut self, relay: String) {
+    self.pool.add_relay(relay).await;
+  }
 
-  // pub async fn remove_relay(&mut self, relay: String) {
-  //   let mut relays = self.relays.lock().await;
-  //   relays.retain(|relay_data| *relay_data.url != relay);
-  // }
+  pub async fn remove_relay(&mut self, relay: String) {
+    self.pool.remove_relay(relay).await;
+  }
 
   fn get_timestamp_in_seconds(&self) -> u64 {
     let start = SystemTime::now();
@@ -112,10 +106,9 @@ impl Client {
     event
   }
 
-  pub fn publish_text_note(
+  pub async fn publish_text_note(
     &self,
     note: String,
-    tx: futures_channel::mpsc::UnboundedSender<Message>,
   ) {
     let to_publish = ClientToRelayCommEvent {
       event: self.create_event(EventKind::Text, note),
@@ -123,8 +116,10 @@ impl Client {
     }
     .as_json();
 
-    tx.unbounded_send(Message::binary(to_publish.as_bytes()))
-      .unwrap();
+    self
+      .pool
+      .broadcast_messages(Message::binary(to_publish.as_bytes()))
+      .await;
   }
 
   pub fn get_event_metadata(&self) -> String {
@@ -155,7 +150,6 @@ impl Client {
   }
 
   pub fn close_connection(&self) {}
-
 
   pub async fn connect(&self) {
     self

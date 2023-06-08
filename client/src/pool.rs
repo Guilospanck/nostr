@@ -107,7 +107,7 @@ pub struct RelayPool {
   relays: Arc<Mutex<HashMap<String, RelayData>>>,
   // TODO: this will be used when we add new relays to the pool.
   pool_task_sender: PoolTaskSender,
-  relay_pool_task: RelayPoolTask
+  relay_pool_task: RelayPoolTask,
 }
 
 impl RelayPool {
@@ -128,13 +128,27 @@ impl RelayPool {
     Self {
       relays,
       pool_task_sender,
-      relay_pool_task
+      relay_pool_task,
     }
   }
 
   pub async fn relays(&self) -> HashMap<String, RelayData> {
     let relays = self.relays.lock().await;
     relays.clone()
+  }
+
+  pub async fn add_relay(&self, url: String) {
+    let mut relays = self.relays().await;
+
+    if relays.get(&url).is_none() {
+      let relay = RelayData::new(url.clone(), self.pool_task_sender.clone());
+      relays.insert(url, relay);
+    }
+  }
+
+  pub async fn remove_relay(&self, url: String) {
+    let mut relays = self.relays().await;
+    relays.remove(&url);
   }
 
   pub async fn connect(&self, metadata: Message) {
@@ -160,15 +174,15 @@ impl RelayPool {
     }
   }
 
-  pub async fn send_message_to_relay(&self, url: String, message: Message) {
-    let relays = self.relays().await;
-    match relays.get(&url) {
-      Some(relay) => relay.relay_tx.send(message).unwrap(),
-      None => {
-        error!("Relay does not exist in the pool")
-      }
-    }
-  }
+  // pub async fn send_message_to_relay(&self, url: String, message: Message) {
+  //   let relays = self.relays().await;
+  //   match relays.get(&url) {
+  //     Some(relay) => relay.relay_tx.send(message).unwrap(),
+  //     None => {
+  //       error!("Relay does not exist in the pool")
+  //     }
+  //   }
+  // }
 }
 
 #[derive(Debug, Clone)]
@@ -178,7 +192,9 @@ pub struct RelayPoolTask {
 
 impl RelayPoolTask {
   pub fn new(receiver: UnboundedReceiver<RelayPoolMessage>) -> Self {
-    Self { receiver: Arc::new(Mutex::new(receiver)) }
+    Self {
+      receiver: Arc::new(Mutex::new(receiver)),
+    }
   }
 
   /// This is responsible for listening (via `receiver`)
