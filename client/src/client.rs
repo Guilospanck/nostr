@@ -1,7 +1,7 @@
 use bitcoin_hashes::hex::ToHex;
 use std::{
   sync::Arc,
-  time::{SystemTime, UNIX_EPOCH},
+  time::{SystemTime, UNIX_EPOCH}, vec,
 };
 use tokio::sync::Mutex;
 
@@ -99,7 +99,7 @@ impl Client {
   }
 
   fn create_event(&self, kind: EventKind, content: String) -> Event {
-    let pubkey = &self.keys.public_key.to_hex()[2..];
+    let pubkey = &self.keys.public_key.to_hex();
     let created_at = self.get_timestamp_in_seconds();
     let tags = vec![];
 
@@ -130,6 +130,10 @@ impl Client {
     .as_json()
   }
 
+  pub async fn send_updated_metadata(&self) {
+    self.pool.broadcast_messages(Message::from(self.get_event_metadata())).await;
+  }
+
   pub async fn subscribe(&self, filters: Vec<Filter>) {
     let subscription_id = Uuid::new_v4().to_string();
 
@@ -147,6 +151,15 @@ impl Client {
       .await;
 
     self.subscriptions_ids.lock().await.push(subscription_id);
+  }
+
+  pub async fn follow_author(&self, author_pubkey: String) {
+    let filter = Filter {
+      authors: Some(vec![author_pubkey]),
+      ..Default::default()
+    };
+
+    self.subscribe(vec![filter]).await;
   }
 
   pub fn close_connection(&self) {}
