@@ -26,3 +26,4 @@ nostr-sdk = { path = "../nostr-sdk" }
 env_logger = { version = "0.10.0", features = ["color"] }
 log = "0.4.17"
 dotenv = "0.15.0"
+hex = "0.4.3"

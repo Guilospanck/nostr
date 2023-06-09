@@ -255,6 +255,7 @@ pub fn generate_keys() -> AsymmetricKeys {
 mod tests {
   use std::str::FromStr;
 
+  use ::hex::decode;
   use bitcoin_hashes::{hex::ToHex, Hash};
   use secp256k1::All;
 
@@ -314,6 +315,16 @@ mod tests {
     let keypair = KeyPair::from_secret_key(&sut.secp, &seckey);
     let pubkey = XOnlyPublicKey::from_keypair(&keypair);
     assert!(verify_schnorr(&sut.secp, sut.msg, signature_schnorr, pubkey.0.to_string()).is_ok());
+  }
+
+  #[test]
+  fn should_get_converted_pubkey_without_errors() {
+    let keys = generate_keys();
+    let public_key = &keys.public_key.to_hex()[2..];
+    let public_key_as_bytes = decode(public_key).unwrap();
+    let public_key_as_hex = public_key_as_bytes.to_hex();
+
+    XOnlyPublicKey::from_str(&public_key_as_hex).unwrap();
   }
 
   #[test]

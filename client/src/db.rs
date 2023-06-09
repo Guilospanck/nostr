@@ -1,5 +1,7 @@
-use std::{fs, vec, u8};
+use std::{fs, u8, vec};
 
+use ::hex::decode;
+use bitcoin_hashes::hex::ToHex;
 use redb::{Database, ReadableTable, TableDefinition, TableHandle};
 
 use nostr_sdk::schnorr;
@@ -65,8 +67,8 @@ pub fn get_client_keys() -> Result<Keys, redb::Error> {
   if keys.private_key.is_empty() || keys.public_key.is_empty() {
     let generated = schnorr::generate_keys();
     keys.private_key = generated.private_key.secret_bytes().to_vec();
-    let pubkey = &generated.public_key.to_string()[2..];
-    keys.public_key = pubkey.as_bytes().to_vec();
+    let pubkey = &generated.public_key.to_hex()[2..];
+    keys.public_key = decode(pubkey).unwrap();
 
     write_to_db(&db, "private_key", &keys.private_key)?;
     write_to_db(&db, "public_key", &keys.public_key)?;
