@@ -43,8 +43,8 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [RELAY] Generate binary release with Github Actions. See this [example](https://github.com/Asone/nostrss/blob/main/.github/workflows/release.yml)
 - [x] [CLIENT] Should sign events properly.
 - [x] [CLIENT] Send `METADATA` when connecting to RELAY.
-- [ ] [CLIENT] The first time it runs (without a DB created, it is throwing an err that table `keys` does not exist).
-- [ ] [CLIENT] When client is sending message, it is alternating between different relays <--.
+- [x] [CLIENT] The first time it runs (without a DB created, it is throwing an err that table `keys` does not exist).
+- [x] [CLIENT] When client is sending message, it is alternating between different relays <--.
 - [ ] [CLIENT] Clients should NOT be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own filters in order to request data from different relays.
 - [ ] [CLIENT] Should have a way of handling duplicated events, since a client can be connected to multiple relays.
@@ -53,14 +53,14 @@ It is working. The problem was with sending the message as BINARY to the client.
 
 ## Improvements
 
-- [ ] [CLIENT/RELAY/SDK] Use cargo `workspaces` (maybe).
+- [x] [CLIENT/RELAY/SDK] Use cargo `workspaces` (maybe).
+- [x] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
 - [ ] [CLIENT] Should save its own events.
 - [ ] [RELAY] Improve cross-compilation to darwin and windows.
 - [ ] [RELAY] Change the way Relay reads from DB (putting all that data in memory is not the best case scenario).
 - [ ] [CLIENT/RELAY] Add data validation to prevent panics.
 - [ ] [CLIENT/RELAY] Check `tracing`.
 - [ ] [CLIENT/RELAY] Implement `optional` NIPs
-- [ ] [CLIENT] Create abstraction function to follow someone(i.e.: send a new REQ message with a filter requiring its pubkey).
 
 ## NIPs implemented
 

@@ -2,7 +2,7 @@ use std::{fs, u8, vec};
 
 use ::hex::decode;
 use bitcoin_hashes::hex::ToHex;
-use redb::{Database, ReadableTable, TableDefinition, TableHandle};
+use redb::{Database, ReadableTable, TableDefinition};
 
 use nostr_sdk::schnorr;
 
@@ -28,22 +28,15 @@ pub fn get_client_keys() -> Result<Keys, redb::Error> {
   let mut keys = Keys::default();
   fs::create_dir_all("db/")?;
   let db = Database::create("db/client_db.redb")?;
+  
+  {
+    let write_txn = db.begin_write()?;
+    write_txn.open_table(TABLE)?; // this basically just creates the table if doesn't exist
+    write_txn.commit()?;
+  }
 
   let read_txn = db.begin_read()?;
-  let table_exists = read_txn
-    .list_tables()?
-    .any(|table| table.name() == TABLE.name());
-
-  let table = {
-    if table_exists {
-      read_txn.open_table(TABLE)?
-    } else {
-      let write_txn = db.begin_write()?;
-      write_txn.open_table(TABLE)?; // this basically just creates the table if doesn't exist
-      write_txn.commit()?;
-      read_txn.open_table(TABLE)?
-    }
-  };
+  let table = read_txn.open_table(TABLE)?;
 
   // try to get private key
   let private_key_kv = table.get("private_key").unwrap();
