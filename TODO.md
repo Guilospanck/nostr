@@ -45,7 +45,7 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [CLIENT] Send `METADATA` when connecting to RELAY.
 - [x] [CLIENT] The first time it runs (without a DB created, it is throwing an err that table `keys` does not exist).
 - [x] [CLIENT] When client is sending message, it is alternating between different relays <--.
-- [ ] [CLIENT] Clients should NOT be allowed to open more than one connection to the same server.
+- [x] [CLIENT] Clients should NOT be allowed to open more than one connection to the same server.
 - [ ] [CLIENT] Should save its own filters in order to request data from different relays.
 - [ ] [CLIENT] Should have a way of handling duplicated events, since a client can be connected to multiple relays.
 - [ ] [CLIENT] Must validate signature.

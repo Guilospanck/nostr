@@ -1,8 +1,9 @@
-use bitcoin_hashes::hex::ToHex;
 use std::{
   sync::Arc,
-  time::{SystemTime, UNIX_EPOCH}, vec,
+  time::{SystemTime, UNIX_EPOCH},
+  vec,
 };
+use bitcoin_hashes::hex::ToHex;
 use tokio::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ use nostr_sdk::{
 };
 
 use crate::{
-  db::{get_client_keys, Keys},
+  database::keys_table::{Keys, KeysTable},
   pool::RelayPool,
 };
 
@@ -52,7 +53,7 @@ impl Default for Client {
 
 impl Client {
   pub fn new() -> Self {
-    let keys = get_client_keys().unwrap();
+    let keys = KeysTable::new().get_client_keys().unwrap();
 
     let pool = RelayPool::new();
 
@@ -131,7 +132,10 @@ impl Client {
   }
 
   pub async fn send_updated_metadata(&self) {
-    self.pool.broadcast_messages(Message::from(self.get_event_metadata())).await;
+    self
+      .pool
+      .broadcast_messages(Message::from(self.get_event_metadata()))
+      .await;
   }
 
   pub async fn subscribe(&self, filters: Vec<Filter>) {
