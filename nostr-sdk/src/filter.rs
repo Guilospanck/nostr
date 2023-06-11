@@ -117,6 +117,10 @@ impl Filter {
   pub fn from_string(data: String) -> Result<Self, serde_json::error::Error> {
     serde_json::from_str(&data)
   }
+
+  pub fn from_string_array(data: String) -> Result<Vec<Self>, serde_json::error::Error> {
+    serde_json::from_str(&data)
+  }
 }
 
 #[cfg(test)]
@@ -178,10 +182,23 @@ mod tests {
     .to_string();
 
     let filter3 = "{\"#e\":[\"44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4\",\"7742783afbf6b283e81af63782ab0c05bbcbccba7f3abce0e0f23706dc27bd42\",\"9621051bcd8723f03da00aae61ee46956936726fcdfa6f34e29ae8f1e2b63cb5\"],\"#p\":[\"potato\"],\"kinds\":[1,6,7,9735]}".to_string();
+    // array
+    let filter4 = json!(
+      [{
+        "#e": [
+          "44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4",
+          "7742783afbf6b283e81af63782ab0c05bbcbccba7f3abce0e0f23706dc27bd42",
+          "9621051bcd8723f03da00aae61ee46956936726fcdfa6f34e29ae8f1e2b63cb5"
+        ],
+        "p": ["potato"],
+        "kinds": [1, 6, 7, 9735]
+      }])
+      .to_string();
 
     let result = Filter::from_string(filter).unwrap();
     let result2 = Filter::from_string(filter2).unwrap();
     let result3 = Filter::from_string(filter3).unwrap();
+    let result4 = Filter::from_string_array(filter4).unwrap();
     let expected = Filter {
       e: Some(vec![
         "44b17a5acd66694cbdf5aea08968453658446368d978a15e61e599b8404d82c4".to_string(),
@@ -201,6 +218,7 @@ mod tests {
     assert_eq!(result, expected);
     assert_eq!(result2, expected);
     assert_eq!(result3, expected);
+    assert_eq!(result4, vec![expected]);
   }
 
   #[test]

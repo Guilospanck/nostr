@@ -1,9 +1,11 @@
+use bitcoin_hashes::hex::ToHex;
+use log::debug;
 use std::{
+  collections::HashMap,
   sync::Arc,
   time::{SystemTime, UNIX_EPOCH},
   vec,
 };
-use bitcoin_hashes::hex::ToHex;
 use tokio::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +22,10 @@ use nostr_sdk::{
 };
 
 use crate::{
-  database::keys_table::{Keys, KeysTable},
+  database::{
+    keys_table::{Keys, KeysTable},
+    subscriptions_table::SubscriptionsTable,
+  },
   pool::RelayPool,
 };
 
@@ -41,7 +46,7 @@ impl Metadata {
 pub struct Client {
   keys: Keys,
   metadata: Metadata,
-  subscriptions_ids: Arc<Mutex<Vec<String>>>,
+  subscriptions: Arc<Mutex<HashMap<String, Vec<Filter>>>>,
   pool: RelayPool,
 }
 
@@ -54,12 +59,14 @@ impl Default for Client {
 impl Client {
   pub fn new() -> Self {
     let keys = KeysTable::new().get_client_keys().unwrap();
+    let subscriptions = SubscriptionsTable::new().get_all_subscriptions().unwrap();
+    debug!("{:?}", subscriptions);
 
     let pool = RelayPool::new();
 
     Self {
       keys,
-      subscriptions_ids: Arc::new(Mutex::new(Vec::<String>::new())),
+      subscriptions: Arc::new(Mutex::new(subscriptions)),
       metadata: Metadata::default(),
       pool,
     }
@@ -142,7 +149,7 @@ impl Client {
     let subscription_id = Uuid::new_v4().to_string();
 
     let filter_subscription = ClientToRelayCommRequest {
-      filters,
+      filters: filters.clone(),
       subscription_id: subscription_id.clone(),
       ..Default::default()
     }
@@ -154,7 +161,35 @@ impl Client {
       .broadcast_messages(Message::binary(filter_subscription.as_bytes()))
       .await;
 
-    self.subscriptions_ids.lock().await.push(subscription_id);
+    // save to db
+    let filters_string = serde_json::to_string(&filters).unwrap();
+    SubscriptionsTable::new().add_new_subscription(&subscription_id, &filters_string);
+
+    // save to memory
+    self
+      .subscriptions
+      .lock()
+      .await
+      .insert(subscription_id, filters);
+  }
+
+  pub async fn subscribe_to_all_stored_requests(&self) {
+    let subscriptions = self.subscriptions().await;
+
+    for (subs_id, filters) in subscriptions.iter() {
+      let filter_subscription = ClientToRelayCommRequest {
+        filters: filters.clone(),
+        subscription_id: subs_id.clone(),
+        ..Default::default()
+      }
+      .as_json();
+
+      // Broadcast subscription to all relays in the pool
+      self
+        .pool
+        .broadcast_messages(Message::binary(filter_subscription.as_bytes()))
+        .await;
+    }
   }
 
   pub async fn follow_author(&self, author_pubkey: String) {
@@ -164,6 +199,11 @@ impl Client {
     };
 
     self.subscribe(vec![filter]).await;
+  }
+
+  pub async fn subscriptions(&self) -> HashMap<String, Vec<Filter>> {
+    let subscriptions = self.subscriptions.lock().await;
+    subscriptions.clone()
   }
 
   pub fn close_connection(&self) {}

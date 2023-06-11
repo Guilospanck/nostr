@@ -40,7 +40,7 @@ impl KeysTable {
   pub fn new() -> Self {
     let keys = Keys::default();
     fs::create_dir_all("db/").unwrap();
-    let db = Database::create("db/client_db.redb").unwrap();
+    let db = Database::create("db/keys.redb").unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();

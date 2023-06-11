@@ -1,5 +1,6 @@
 use std::result;
 pub mod keys_table;
+pub mod subscriptions_table;
 
 type Result<T> = result::Result<T, redb::Error>;
 
