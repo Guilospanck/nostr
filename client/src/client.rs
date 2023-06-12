@@ -107,12 +107,12 @@ impl Client {
   }
 
   fn create_event(&self, kind: EventKind, content: String) -> Event {
-    let pubkey = &self.keys.public_key.to_hex();
+    let pubkey = self.keys.public_key.to_hex();
     let created_at = self.get_timestamp_in_seconds();
     let tags = vec![];
 
     let mut event =
-      Event::new_without_signature(pubkey.to_string(), created_at, kind, tags, content);
+      Event::new_without_signature(pubkey, created_at, kind, tags, content);
     event.sign_event(self.keys.private_key.clone());
     event
   }
@@ -154,6 +154,8 @@ impl Client {
       ..Default::default()
     }
     .as_json();
+
+    debug!("SUBSCRIBING to {:?}", filter_subscription);
 
     // Broadcast REQ subscription to all relays in the pool
     self
@@ -215,6 +217,16 @@ impl Client {
   pub async fn follow_author(&self, author_pubkey: String) {
     let filter = Filter {
       authors: Some(vec![author_pubkey]),
+      ..Default::default()
+    };
+
+    self.subscribe(vec![filter]).await;
+  }
+
+  pub async fn follow_myself(&self) {
+    let pubkey = self.keys.public_key.to_hex();
+    let filter = Filter {
+      authors: Some(vec![pubkey]),
       ..Default::default()
     };
 
