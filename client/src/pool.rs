@@ -5,6 +5,9 @@ use futures_util::StreamExt;
 use log::debug;
 use log::error;
 use log::info;
+use nostr_sdk::relay_to_client_communication::eose::RelayToClientCommEose;
+use nostr_sdk::relay_to_client_communication::event::RelayToClientCommEvent;
+use nostr_sdk::relay_to_client_communication::notice::RelayToClientCommNotice;
 use tokio::sync::MutexGuard;
 use tokio::sync::{
   mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -132,19 +135,19 @@ impl RelayPool {
   }
 
   /// Gets a `read` version of the HashMap of relays.
-  /// 
+  ///
   /// This is fine if you want to just read the contents of the HashMap of relays.
   /// But not if you want to mutate it.
-  /// 
+  ///
   pub async fn relays(&self) -> HashMap<String, RelayData> {
     let relays = self.relays.lock().await;
     relays.clone()
   }
 
   /// Gets a `mutable` version of the HashMap of relays.
-  /// 
+  ///
   /// This is ideal if you want to change the contents of the HashMap of relays.
-  /// 
+  ///
   pub async fn relays_mut(&self) -> MutexGuard<HashMap<String, RelayData>> {
     self.relays.lock().await
   }
@@ -185,6 +188,21 @@ impl RelayPool {
   }
 }
 
+#[derive(Default, Clone, Debug)]
+struct AnyCommunicationFromRelay {
+  eose: RelayToClientCommEose,
+  event: RelayToClientCommEvent,
+  notice: RelayToClientCommNotice,
+}
+
+#[derive(Default, Debug, Clone)]
+struct MsgResult {
+  no_op: bool,
+  is_eose: bool,
+  is_event: bool,
+  is_notice: bool,
+  data: AnyCommunicationFromRelay,
+}
 #[derive(Debug, Clone)]
 pub struct RelayPoolTask {
   receiver: Arc<Mutex<UnboundedReceiver<RelayPoolMessage>>>,
@@ -197,6 +215,40 @@ impl RelayPoolTask {
     }
   }
 
+  /// Helper to parse the function into EOSE, NOTICE or EVENT.
+  ///
+  fn parse_message_received_from_relay(&self, msg: &str, relay_url: String) -> MsgResult {
+    let mut result = MsgResult::default();
+
+    if let Ok(eose_msg) = RelayToClientCommEose::from_json(msg.to_string()) {
+      debug!("EOSE from {relay_url}:\n {:?}\n", eose_msg);
+
+      result.is_eose = true;
+      result.data.eose = eose_msg;
+      return result;
+    }
+
+    if let Ok(event_msg) = RelayToClientCommEvent::from_json(msg.to_string()) {
+      debug!("EVENT from {relay_url}:\n {:?}\n", event_msg);
+
+      result.is_event = true;
+      result.data.event = event_msg;
+      return result;
+    }
+
+    if let Ok(notice_msg) = RelayToClientCommNotice::from_json(msg.to_string()) {
+      debug!("NOTICE from {relay_url}:\n {:?}\n", notice_msg);
+
+      result.is_notice = true;
+      result.data.notice = notice_msg;
+      return result;
+    }
+
+    result.no_op = true;
+    debug!("NO-OP from {relay_url}: {:?}\n", msg);
+    result
+  }
+
   /// This is responsible for listening (via `receiver`)
   /// for any messages sent to the relay pool via `pool_task_sender`.
   pub async fn run(&mut self) {
@@ -204,11 +256,7 @@ impl RelayPoolTask {
     while let Some(msg) = self.receiver.lock().await.recv().await {
       match msg {
         RelayPoolMessage::ReceivedMsg { relay_url, msg } => {
-          debug!(
-            "Received message from relay {}: {}",
-            relay_url,
-            msg.to_text().unwrap()
-          );
+          let _ = self.parse_message_received_from_relay(msg.to_text().unwrap(), relay_url);
         }
       }
     }
