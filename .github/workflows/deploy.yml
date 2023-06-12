@@ -30,8 +30,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget pkg-config libssl-dev musl-tools
-          sudo wget http://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
-          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2.18_amd64.deb
+          sudo wget http://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.19_amd64.deb
+          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2.19_amd64.deb
 
       # Setup Toolchain
       - name: Setup Toolchain
@@ -41,13 +41,6 @@ jobs:
           toolchain: stable
           override: true
           target: ${{ matrix.target }}
-
-      # - name: Build target
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     use-cross: true
-      #     command: build
-      #     args: --release --target ${{ matrix.target }}
 
       # Install cross to build cross-compiling
       - name: Install cross

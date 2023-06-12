@@ -19,13 +19,6 @@ jobs:
       matrix:
         rust:
           - nightly
-        # package:
-        #   - directory: ./relay
-        #     name: relay
-        #   - directory: ./client
-        #     name: client
-        #   - directory: ./nostr-sdk
-        #     name: nostr-sdk
 
     steps:
     # Checkout repository
