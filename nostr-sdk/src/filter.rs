@@ -26,9 +26,9 @@ pub struct Filter {
   pub ids: Option<Vec<EventId>>,
   pub authors: Option<Vec<PubKey>>,
   pub kinds: Option<Vec<EventKind>>,
-  #[serde(alias = "#e")]
+  #[serde(alias = "#e", rename(serialize = "#e"))]
   pub e: Option<Vec<String>>,
-  #[serde(alias = "#p")]
+  #[serde(alias = "#p", rename(serialize = "#p"))]
   pub p: Option<Vec<String>>,
   pub since: Option<Timestamp>,
   pub until: Option<Timestamp>,
@@ -259,8 +259,8 @@ mod tests {
     let result: Value = serde_json::from_str(&result).unwrap();
 
     assert_eq!(result["kinds"], expected["kinds"]);
-    assert_eq!(result["e"], expected["e"]);
-    assert_eq!(result["p"], expected["#p"]);
+    assert_eq!(result["#e"], expected["e"]);
+    assert_eq!(result["#p"], expected["#p"]);
     assert_eq!(result["authors"], expected["authors"]);
   }
 }

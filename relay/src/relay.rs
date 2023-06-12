@@ -152,8 +152,6 @@ async fn handle_connection(
   };
 
   let broadcast_incoming = incoming.try_for_each(|msg| {
-    debug!("Received a message from {addr}: {}", msg.to_text().unwrap());
-
     let mut clients = client_connection_info.lock().unwrap();
     let mut events = events.lock().unwrap();
 
