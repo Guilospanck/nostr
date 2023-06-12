@@ -1,5 +1,12 @@
 # nostr [![codecov](https://codecov.io/gh/Guilospanck/nostr/branch/main/graph/badge.svg?token=1CF85SBYD9)](https://codecov.io/gh/Guilospanck/nostr)
 
+Yet another Nostr implementation in Rust.
+
+## NIPs implemented
+
+- [x] NIP01
+- [x] NIP10
+
 ## How to run
 
 Both `client`, `relay` and `nostr-sdk` read from `.env` variables to work. If it is not found, it is going to use the default values.
