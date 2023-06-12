@@ -231,6 +231,14 @@ impl RelayPoolTask {
     if let Ok(event_msg) = RelayToClientCommEvent::from_json(msg.to_string()) {
       debug!("EVENT from {relay_url}:\n {:?}\n", event_msg);
 
+      // validates signature
+      if !event_msg.event.check_event_signature() {
+        result.no_op = true;
+        error!("Received an event, but its signature is not valid!");
+        debug!("Event signature with error: {:?}", event_msg.event);
+        return result;
+      }
+
       result.is_event = true;
       result.data.event = event_msg;
       return result;
