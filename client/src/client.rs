@@ -13,7 +13,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 use uuid::Uuid;
 
-use nostr_sdk::{filter::Filter, client_to_relay_communication::close::ClientToRelayCommClose};
+use nostr_sdk::{client_to_relay_communication::close::ClientToRelayCommClose, filter::Filter};
 use nostr_sdk::{
   client_to_relay_communication::{
     event::ClientToRelayCommEvent, request::ClientToRelayCommRequest,
@@ -111,8 +111,7 @@ impl Client {
     let created_at = self.get_timestamp_in_seconds();
     let tags = vec![];
 
-    let mut event =
-      Event::new_without_signature(pubkey, created_at, kind, tags, content);
+    let mut event = Event::new_without_signature(pubkey, created_at, kind, tags, content);
     event.sign_event(self.keys.private_key.clone());
     event
   }
@@ -126,7 +125,7 @@ impl Client {
 
     self
       .pool
-      .broadcast_messages(Message::binary(to_publish.as_bytes()))
+      .broadcast_messages(Message::from(to_publish))
       .await;
   }
 
@@ -160,7 +159,7 @@ impl Client {
     // Broadcast REQ subscription to all relays in the pool
     self
       .pool
-      .broadcast_messages(Message::binary(filter_subscription.as_bytes()))
+      .broadcast_messages(Message::from(filter_subscription))
       .await;
 
     // save to db
@@ -179,12 +178,13 @@ impl Client {
     let close_subscription = ClientToRelayCommClose {
       subscription_id: subscription_id.to_string(),
       ..Default::default()
-    }.as_json();
+    }
+    .as_json();
 
     // Broadcast CLOSE subscription to all relays in the pool
     self
       .pool
-      .broadcast_messages(Message::binary(close_subscription.as_bytes()))
+      .broadcast_messages(Message::from(close_subscription))
       .await;
 
     // remove from db
@@ -192,7 +192,7 @@ impl Client {
 
     // remove from memory
     let mut subscriptions = self.subscriptions().await;
-    subscriptions.remove(subscription_id);    
+    subscriptions.remove(subscription_id);
   }
 
   pub async fn subscribe_to_all_stored_requests(&self) {
@@ -209,7 +209,7 @@ impl Client {
       // Broadcast subscription to all relays in the pool
       self
         .pool
-        .broadcast_messages(Message::binary(filter_subscription.as_bytes()))
+        .broadcast_messages(Message::from(filter_subscription))
         .await;
     }
   }
