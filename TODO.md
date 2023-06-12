@@ -47,9 +47,9 @@ It is working. The problem was with sending the message as BINARY to the client.
 - [x] [CLIENT] When client is sending message, it is alternating between different relays <--.
 - [x] [CLIENT] Clients should NOT be allowed to open more than one connection to the same server.
 - [x] [CLIENT] Should save its own filters in order to request data from different relays.
-- [ ] [CLIENT] Should have a way of handling duplicated events, since a client can be connected to multiple relays.
-- [ ] [CLIENT] Must validate signature.
+- [x] [CLIENT] Must validate signature.
 - [ ] [CLIENT/RELAY] Finish the implementation of all the required NIPs (just `NIP01`)
+- [-] [CLIENT] ~~Should have a way of handling duplicated events, since a client can be connected to multiple relays~~ To be used when calling from a frontend or whatnot.
 
 ## Improvements
 
