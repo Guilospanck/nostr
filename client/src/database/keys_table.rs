@@ -8,7 +8,8 @@ use nostr_sdk::schnorr;
 
 use super::{ClientDatabase, Result};
 
-const KEYS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("keys");
+const TABLE_NAME: &str = "keys";
+const KEYS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new(TABLE_NAME);
 
 #[derive(Debug, Default, Clone)]
 pub struct Keys {
@@ -34,13 +35,23 @@ impl<'a> ClientDatabase<'a> for KeysTable {
     write_txn.commit()?;
     Ok(())
   }
+
+  fn remove_from_db(&self, k: Self::K) -> Result<()> {
+    let write_txn = self.db.begin_write()?;
+    {
+      let mut table = write_txn.open_table(KEYS_TABLE)?;
+      table.remove(k)?;
+    }
+    write_txn.commit()?;
+    Ok(())
+  }
 }
 
 impl KeysTable {
   pub fn new() -> Self {
     let keys = Keys::default();
     fs::create_dir_all("db/").unwrap();
-    let db = Database::create("db/keys.redb").unwrap();
+    let db = Database::create(format!("db/{TABLE_NAME}.redb")).unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();

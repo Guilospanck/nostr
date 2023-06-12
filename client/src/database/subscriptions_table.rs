@@ -5,7 +5,8 @@ use nostr_sdk::filter::Filter;
 
 use super::{ClientDatabase, Result};
 
-const SUBSCRIPTIONS_TABLE: TableDefinition<&str, &str> = TableDefinition::new("subscriptions");
+const TABLE_NAME: &str = "subscriptions";
+const SUBSCRIPTIONS_TABLE: TableDefinition<&str, &str> = TableDefinition::new(TABLE_NAME);
 
 #[derive(Debug)]
 pub struct SubscriptionsTable {
@@ -25,12 +26,22 @@ impl<'a> ClientDatabase<'a> for SubscriptionsTable {
     write_txn.commit()?;
     Ok(())
   }
+
+  fn remove_from_db(&self, k: Self::K) -> Result<()> {
+    let write_txn = self.db.begin_write()?;
+    {
+      let mut table = write_txn.open_table(SUBSCRIPTIONS_TABLE)?;
+      table.remove(k)?;
+    }
+    write_txn.commit()?;
+    Ok(())
+  }
 }
 
 impl SubscriptionsTable {
   pub fn new() -> Self {
     fs::create_dir_all("db/").unwrap();
-    let db = Database::create("db/subscriptions.redb").unwrap();
+    let db = Database::create(format!("db/{TABLE_NAME}.redb")).unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();
@@ -60,5 +71,9 @@ impl SubscriptionsTable {
 
   pub fn add_new_subscription(&self, k: &str, v: &str) {
     self.write_to_db(k, v).unwrap();
+  }
+
+  pub fn remove_subscription(&self, k: &str) {
+    self.remove_from_db(k).unwrap();
   }
 }

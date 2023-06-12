@@ -8,5 +8,6 @@ trait ClientDatabase<'a> {
   type K;
   type V;
   fn write_to_db(&self, k: Self::K, v: Self::V) -> Result<()>;
+  fn remove_from_db(&self, k: Self::K) -> Result<()>;
 }
 

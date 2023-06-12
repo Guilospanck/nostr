@@ -13,7 +13,7 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 use uuid::Uuid;
 
-use nostr_sdk::filter::Filter;
+use nostr_sdk::{filter::Filter, client_to_relay_communication::close::ClientToRelayCommClose};
 use nostr_sdk::{
   client_to_relay_communication::{
     event::ClientToRelayCommEvent, request::ClientToRelayCommRequest,
@@ -155,7 +155,7 @@ impl Client {
     }
     .as_json();
 
-    // Broadcast subscription to all relays in the pool
+    // Broadcast REQ subscription to all relays in the pool
     self
       .pool
       .broadcast_messages(Message::binary(filter_subscription.as_bytes()))
@@ -171,6 +171,26 @@ impl Client {
       .lock()
       .await
       .insert(subscription_id, filters);
+  }
+
+  pub async fn unsubscribe(&self, subscription_id: &str) {
+    let close_subscription = ClientToRelayCommClose {
+      subscription_id: subscription_id.to_string(),
+      ..Default::default()
+    }.as_json();
+
+    // Broadcast CLOSE subscription to all relays in the pool
+    self
+      .pool
+      .broadcast_messages(Message::binary(close_subscription.as_bytes()))
+      .await;
+
+    // remove from memory
+    let mut subscriptions = self.subscriptions().await;
+    subscriptions.remove(subscription_id);
+    
+    // remove from db
+    SubscriptionsTable::new().remove_subscription(subscription_id);
   }
 
   pub async fn subscribe_to_all_stored_requests(&self) {
