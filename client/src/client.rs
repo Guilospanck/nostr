@@ -60,7 +60,6 @@ impl Client {
   pub fn new() -> Self {
     let keys = KeysTable::new().get_client_keys().unwrap();
     let subscriptions = SubscriptionsTable::new().get_all_subscriptions().unwrap();
-    debug!("{:?}", subscriptions);
 
     let pool = RelayPool::new();
 

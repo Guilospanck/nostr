@@ -39,3 +39,7 @@ run-all-tests: relay-run-tests client-run-tests nostr-sdk-run-tests
 ##! Only in dev
 relay-upload-compiled-to-server:
 	$(MAKE) -C deploy/ relay-upload-compiled-to-server
+
+##! Tag and push it. Example: ❯ make tag-and-push new_tag=v0.0.2
+tag-and-push:
+	git tag -a ${new_tag} && git push origin ${new_tag}
