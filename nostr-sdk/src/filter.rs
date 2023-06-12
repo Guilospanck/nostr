@@ -23,15 +23,21 @@ use crate::event::{id::EventId, kind::EventKind, PubKey, Timestamp};
 ///
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct Filter {
+  #[serde(skip_serializing_if="Option::is_none")]
   pub ids: Option<Vec<EventId>>,
+  #[serde(skip_serializing_if="Option::is_none")]
   pub authors: Option<Vec<PubKey>>,
+  #[serde(skip_serializing_if="Option::is_none")]
   pub kinds: Option<Vec<EventKind>>,
-  #[serde(alias = "#e", rename(serialize = "#e"))]
+  #[serde(alias = "#e", rename(serialize = "#e"), skip_serializing_if="Option::is_none")]
   pub e: Option<Vec<String>>,
-  #[serde(alias = "#p", rename(serialize = "#p"))]
+  #[serde(alias = "#p", rename(serialize = "#p"), skip_serializing_if="Option::is_none")]
   pub p: Option<Vec<String>>,
+  #[serde(skip_serializing_if="Option::is_none")]
   pub since: Option<Timestamp>,
+  #[serde(skip_serializing_if="Option::is_none")]
   pub until: Option<Timestamp>,
+  #[serde(skip_serializing_if="Option::is_none")]
   pub limit: Option<Timestamp>,
 }
 
