@@ -5,6 +5,7 @@ use futures_util::StreamExt;
 use log::debug;
 use log::error;
 use log::info;
+use tokio::sync::MutexGuard;
 use tokio::sync::{
   mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
   Mutex,
@@ -130,13 +131,26 @@ impl RelayPool {
     }
   }
 
+  /// Gets a `read` version of the HashMap of relays.
+  /// 
+  /// This is fine if you want to just read the contents of the HashMap of relays.
+  /// But not if you want to mutate it.
+  /// 
   pub async fn relays(&self) -> HashMap<String, RelayData> {
     let relays = self.relays.lock().await;
     relays.clone()
   }
 
+  /// Gets a `mutable` version of the HashMap of relays.
+  /// 
+  /// This is ideal if you want to change the contents of the HashMap of relays.
+  /// 
+  pub async fn relays_mut(&self) -> MutexGuard<HashMap<String, RelayData>> {
+    self.relays.lock().await
+  }
+
   pub async fn add_relay(&self, url: String, metadata: Message) {
-    let mut relays = self.relays().await;
+    let mut relays = self.relays_mut().await;
 
     if relays.get(&url).is_none() {
       let relay = RelayData::new(url.clone(), self.pool_task_sender.clone());
@@ -146,7 +160,7 @@ impl RelayPool {
   }
 
   pub async fn remove_relay(&self, url: String) {
-    let mut relays = self.relays().await;
+    let mut relays = self.relays_mut().await;
     relays.remove(&url);
   }
 
@@ -165,7 +179,6 @@ impl RelayPool {
 
   pub async fn broadcast_messages(&self, message: Message) {
     let relays = self.relays().await;
-
     for relay in relays.values() {
       relay.send_message(message.clone());
     }

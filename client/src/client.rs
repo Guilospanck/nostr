@@ -185,12 +185,12 @@ impl Client {
       .broadcast_messages(Message::binary(close_subscription.as_bytes()))
       .await;
 
-    // remove from memory
-    let mut subscriptions = self.subscriptions().await;
-    subscriptions.remove(subscription_id);
-    
     // remove from db
     SubscriptionsTable::new().remove_subscription(subscription_id);
+
+    // remove from memory
+    let mut subscriptions = self.subscriptions().await;
+    subscriptions.remove(subscription_id);    
   }
 
   pub async fn subscribe_to_all_stored_requests(&self) {

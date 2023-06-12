@@ -19,6 +19,7 @@ async fn main() {
     .send_updated_metadata().await;
   client.add_relay(String::from("wss://relay.damus.io")).await;
   client.subscribe_to_all_stored_requests().await;
+  client.unsubscribe("d8e67092-c17f-4934-8b7d-6c97cb697cc1").await;
 
   let ctrl_c = async {
     tokio::signal::ctrl_c().await.unwrap();
