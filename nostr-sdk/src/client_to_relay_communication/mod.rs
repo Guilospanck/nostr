@@ -113,11 +113,13 @@ pub fn check_event_match_filter(event: Event, filter: Filter) -> bool {
     {
       Some(index) => {
         if let Tag::PubKey(event_pubkey_tag_pubkey, _) = &event.tags[index] {
-          if !pubkeys
-            .iter()
-            .any(|pubkey| *pubkey == *event_pubkey_tag_pubkey)
-          {
-            return false;
+          for pubkey in pubkeys {
+            if !event_pubkey_tag_pubkey
+              .iter()
+              .any(|evt_pubkey_tag| *evt_pubkey_tag == pubkey)
+            {
+              return false;
+            }
           }
         }
       }
@@ -283,11 +285,11 @@ mod tests {
       ..Default::default()
     };
     let event = Event {
-      tags: vec![Tag::PubKey(mock_filter_p_tag, None)],
+      tags: vec![Tag::PubKey(vec![mock_filter_p_tag], None)],
       ..Default::default()
     };
     let event2 = Event {
-      tags: vec![Tag::PubKey(mock_filter_p_tag2, None)],
+      tags: vec![Tag::PubKey(vec![mock_filter_p_tag2], None)],
       ..Default::default()
     };
 
@@ -325,7 +327,7 @@ mod tests {
       kind: EventKind::from(mock_filter_kind),
       created_at: mock_event_created_at_in_between,
       tags: vec![
-        Tag::PubKey(mock_filter_p_tag.clone(), None),
+        Tag::PubKey(vec![mock_filter_p_tag.clone()], None),
         Tag::Event(EventId(mock_filter_e_tag.clone()), None, None),
       ],
       ..Default::default()
@@ -390,7 +392,7 @@ mod tests {
       String::from("01cd91b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76");
     let event_different_p_tag = Event {
       tags: vec![
-        Tag::PubKey(mock_event_different_p_tag, None),
+        Tag::PubKey(vec![mock_event_different_p_tag], None),
         Tag::Event(EventId(mock_filter_e_tag), None, None),
       ],
       ..event.clone()
@@ -406,7 +408,7 @@ mod tests {
       String::from("21cd91b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76");
     let event_different_p_tag = Event {
       tags: vec![
-        Tag::PubKey(mock_filter_p_tag, None),
+        Tag::PubKey(vec![mock_filter_p_tag], None),
         Tag::Event(EventId(mock_event_different_e_tag), None, None),
       ],
       ..event

@@ -113,7 +113,8 @@ impl Client {
     since_the_epoch.as_secs()
   }
 
-  fn create_event(&self, kind: EventKind, content: String, tags: Option<Vec<Tag>>) -> Event {
+  // TODO: put this method back to private
+  pub fn create_event(&self, kind: EventKind, content: String, tags: Option<Vec<Tag>>) -> Event {
     let pubkey = self.keys.public_key.to_hex();
     let created_at = self.get_timestamp_in_seconds();
     let tags = tags.unwrap_or(vec![]);
@@ -125,14 +126,32 @@ impl Client {
 
   pub async fn reply_to_event(
     &self,
-    event_id_referenced: EventId,
+    event_referenced: Event,
     recommended_relay_url: Option<UncheckedRecommendRelayURL>,
     marker: Marker,
     content: String,
   ) {
+    let event_id_referenced = EventId(event_referenced.id);
     let recommended_relay = recommended_relay_url.unwrap_or(UncheckedRecommendRelayURL::default());
-    let tag = Tag::Event(event_id_referenced, Some(recommended_relay), Some(marker));
-    let tags = vec![tag];
+
+    // e tags
+    let e_tag = Tag::Event(
+      event_id_referenced,
+      Some(recommended_relay.clone()),
+      Some(marker),
+    );
+
+    // TODO: only add pubkey if there is something there (do not add empty ones)
+    // p tags
+    let mut pubkeys_from_event_referenced: Vec<String> = vec![];
+    for tag in event_referenced.tags {
+      if let Tag::PubKey(event_pubkey_tag_pubkey, _) = tag {
+        pubkeys_from_event_referenced.extend_from_slice(&event_pubkey_tag_pubkey);
+      }
+    }
+    let p_tag = Tag::PubKey(pubkeys_from_event_referenced, Some(recommended_relay));
+
+    let tags = vec![e_tag, p_tag];
 
     let to_publish = ClientToRelayCommEvent {
       event: self.create_event(EventKind::Text, content, Some(tags)),

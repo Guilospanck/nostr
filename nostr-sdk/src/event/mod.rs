@@ -172,7 +172,7 @@ mod tests {
       kind: EventKind::Text,
       tags: vec![
         Tag::Event(EventId(String::from("688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6")), Some(UncheckedRecommendRelayURL(String::from("wss://relay.damus.io"))), Some(Marker::Root)),
-        Tag::PubKey(String::from("02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76"), Some(UncheckedRecommendRelayURL(String::from("wss://relay.damus.io"))))
+        Tag::PubKey(vec![String::from("02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76")], Some(UncheckedRecommendRelayURL(String::from("wss://relay.damus.io"))))
       ],
       content: String::from("Lorem ipsum dolor sit amet"),
       sig: String::from("e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c")
@@ -190,12 +190,12 @@ mod tests {
           Some(Marker::Root),
         ),
         Tag::PubKey(
-          String::from("02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76"),
+          vec![String::from("02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76")],
           None,
         ),
       ];
 
-      expected_serialized_event = r#"{"id":"05b25af3-4250-4fbf-8ef5-97220858f9ab","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","","root"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76"]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}"#.to_string();
+      expected_serialized_event = r#"{"id":"05b25af3-4250-4fbf-8ef5-97220858f9ab","pubkey":"02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76","created_at":1673002822,"kind":1,"tags":[["e","688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6","","root"],["p","02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76",""]],"content":"Lorem ipsum dolor sit amet","sig":"e8551d85f530113366e8da481354c2756605e3f58149cedc1fb9385d35251712b954af8ef891cb0467d50ddc6685063d4190c97e9e131f903e6e4176dc13ce7c"}"#.to_string();
     }
 
     if event_tag_without_marker {
@@ -210,7 +210,7 @@ mod tests {
           None,
         ),
         Tag::PubKey(
-          String::from("02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76"),
+          vec![String::from("02c7e1b1e9c175ab2d100baf1d5a66e73ecc044e9f8093d0c965741f26aa3abf76")],
           Some(UncheckedRecommendRelayURL(String::from(
             "wss://relay.damus.io",
           ))),
