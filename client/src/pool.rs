@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashMap, sync::Arc};
 
 use futures_util::SinkExt;
@@ -33,29 +34,33 @@ pub struct RelayData {
   relay_tx: UnboundedSender<Message>,
   /// Rx part of the channel to receive messages (by this client) from this relay.
   relay_rx: Arc<Mutex<UnboundedReceiver<Message>>>,
+  /// Flag to signal if the connection must be closed
+  close_communication: Arc<AtomicBool>
 }
 
 impl RelayData {
-  pub fn new(url: String, pool_task_sender: PoolTaskSender) -> Self {
+  fn new(url: String, pool_task_sender: PoolTaskSender) -> Self {
     let (relay_tx, relay_rx) = unbounded_channel();
+    let close_communication = Arc::new(AtomicBool::new(false));
 
     Self {
       url,
       pool_task_sender,
       relay_tx,
       relay_rx: Arc::new(Mutex::new(relay_rx)),
+      close_communication
     }
   }
 
   async fn connect(&self, metadata: Message) {
-    debug!("Connecting to {}", self.url.clone());
+    debug!("❯ Connecting to {}", self.url.clone());
 
     let connection = connect_async(self.url.clone()).await;
 
     // Connect
     match connection {
       Ok((ws_stream, _)) => {
-        info!("Connected to {}", self.url.clone());
+        info!("❯ Connected to {}", self.url.clone());
         let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
         // Send metadata on connection
@@ -68,7 +73,7 @@ impl RelayData {
         // forwarded to the pool end up.
         let relay = self.clone();
         tokio::spawn(async move {
-          debug!("Relay Message Thread Started");
+          debug!("❯ Relay Message Thread Started");
 
           while let Some(msg_res) = ws_rx.next().await {
             if let Ok(msg) = msg_res {
@@ -82,7 +87,7 @@ impl RelayData {
             }
           }
 
-          debug!("Exited from Message Thread of {}", relay.url);
+          debug!("❯ Exited from Message Thread of {}", relay.url);
         });
 
         // Send messages sent to this relay, which were sent by our client.
@@ -90,14 +95,24 @@ impl RelayData {
         tokio::spawn(async move {
           let mut rx = relay.relay_rx.lock().await;
           while let Some(msg) = rx.recv().await {
+            if relay.close_communication.load(Ordering::Relaxed) {
+              break;
+            }
             let _ = ws_tx.send(msg).await;
           }
+          // Closes WS connection when `relay.close_communication` is true
+          let _ = ws_tx.close().await;
         });
       }
       Err(err) => {
         error!("Impossible to connect to {}: {}", self.url, err);
       }
     };
+  }
+
+  async fn disconnect(&self) {
+    debug!("❯ Disconnecting from {}", self.url);
+    self.close_communication.store(true, Ordering::Relaxed);
   }
 
   fn send_message(&self, message: Message) {
@@ -173,6 +188,14 @@ impl RelayPool {
     for relay in relays.values() {
       relay.connect(metadata.clone()).await;
     }
+  }
+
+  pub async fn disconnect_relay(&self, relay_url: String) {
+    let relays = self.relays().await;
+    if let Some(relay) = relays.get(&relay_url) {
+      relay.disconnect().await;
+      self.remove_relay(relay_url).await;
+    };
   }
 
   pub async fn notifications(&self) {
@@ -253,7 +276,7 @@ impl RelayPoolTask {
     }
 
     result.no_op = true;
-    debug!("NO-OP from {relay_url}: {:?}\n", msg);
+    debug!("NO-OP from {relay_url}: {:?}", msg);
     result
   }
 

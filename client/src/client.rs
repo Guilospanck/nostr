@@ -237,7 +237,9 @@ impl Client {
     subscriptions.clone()
   }
 
-  pub fn close_connection(&self) {}
+  pub async fn close_connection(&self, relay_url: String) {
+    self.pool.disconnect_relay(relay_url).await;
+  }
 
   pub async fn connect(&self) {
     self
