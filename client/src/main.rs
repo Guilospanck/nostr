@@ -1,8 +1,7 @@
-use std::{thread::sleep, time::Duration};
-
 use client::client;
 use env_logger::Env;
 use futures_util::join;
+use nostr_sdk::event::{id::EventId, marker::Marker};
 
 #[tokio::main]
 async fn main() {
@@ -34,11 +33,17 @@ async fn main() {
   // client.unsubscribe("d8e67092-c17f-4934-8b7d-6c97cb697cc1").await;
   // client.publish_text_note("TESTING!!!".to_string()).await;
 
-  sleep(Duration::new(19, 0));
+  let event_id_referenced = EventId(String::from("a1b2-c3d4-e5f6-g7h8"));
+  let content = String::from("Replying");
+  let marker = Marker::Root;
+  client.reply_to_event(event_id_referenced, None, marker, content).await;
 
-  client
-    .close_connection(String::from("ws://127.0.0.1:8080/"))
-    .await;
+  //
+  // sleep(Duration::new(19, 0));
+
+  // client
+  //   .close_connection(String::from("ws://127.0.0.1:8080/"))
+  //   .await;
 
   let ctrl_c = async {
     tokio::signal::ctrl_c().await.unwrap();

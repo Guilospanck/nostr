@@ -13,7 +13,15 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 
 use uuid::Uuid;
 
-use nostr_sdk::{client_to_relay_communication::close::ClientToRelayCommClose, filter::Filter};
+use nostr_sdk::{
+  client_to_relay_communication::close::ClientToRelayCommClose,
+  event::{
+    id::EventId,
+    marker::Marker,
+    tag::{Tag, UncheckedRecommendRelayURL},
+  },
+  filter::Filter,
+};
 use nostr_sdk::{
   client_to_relay_communication::{
     event::ClientToRelayCommEvent, request::ClientToRelayCommRequest,
@@ -105,23 +113,47 @@ impl Client {
     since_the_epoch.as_secs()
   }
 
-  fn create_event(&self, kind: EventKind, content: String) -> Event {
+  fn create_event(&self, kind: EventKind, content: String, tags: Option<Vec<Tag>>) -> Event {
     let pubkey = self.keys.public_key.to_hex();
     let created_at = self.get_timestamp_in_seconds();
-    let tags = vec![];
+    let tags = tags.unwrap_or(vec![]);
 
     let mut event = Event::new_without_signature(pubkey, created_at, kind, tags, content);
     event.sign_event(self.keys.private_key.clone());
     event
   }
 
-  pub async fn publish_text_note(&self, note: String) {
+  pub async fn reply_to_event(
+    &self,
+    event_id_referenced: EventId,
+    recommended_relay_url: Option<UncheckedRecommendRelayURL>,
+    marker: Marker,
+    content: String,
+  ) {
+    let recommended_relay = recommended_relay_url.unwrap_or(UncheckedRecommendRelayURL::default());
+    let tag = Tag::Event(event_id_referenced, Some(recommended_relay), Some(marker));
+    let tags = vec![tag];
+
     let to_publish = ClientToRelayCommEvent {
-      event: self.create_event(EventKind::Text, note),
+      event: self.create_event(EventKind::Text, content, Some(tags)),
       ..Default::default()
     }
     .as_json();
 
+    self.publish(to_publish).await
+  }
+
+  pub async fn publish_text_note(&self, note: String) {
+    let to_publish = ClientToRelayCommEvent {
+      event: self.create_event(EventKind::Text, note, None),
+      ..Default::default()
+    }
+    .as_json();
+
+    self.publish(to_publish).await;
+  }
+
+  pub async fn publish(&self, to_publish: String) {
     self
       .pool
       .broadcast_messages(Message::from(to_publish))
@@ -130,7 +162,7 @@ impl Client {
 
   pub fn get_event_metadata(&self) -> String {
     ClientToRelayCommEvent {
-      event: self.create_event(EventKind::Metadata, self.metadata.as_str()),
+      event: self.create_event(EventKind::Metadata, self.metadata.as_str(), None),
       ..Default::default()
     }
     .as_json()

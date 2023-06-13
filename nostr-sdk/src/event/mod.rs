@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 // Event Modules
 pub mod id;
 pub mod kind;
-mod marker;
+pub mod marker;
 pub mod tag;
 
 use self::id::EventId;
