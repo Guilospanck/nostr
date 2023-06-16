@@ -1,6 +1,7 @@
 use serde::de::Error as DeserializerError;
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt, vec};
+use url::Url;
 
 use super::{EventId, Marker, PubKey};
 
@@ -16,6 +17,12 @@ pub enum Error {
 ///
 #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UncheckedRecommendRelayURL(pub String);
+
+impl UncheckedRecommendRelayURL {
+  pub fn check_if_url(&self) -> bool {
+    Url::parse(&self.0).map_or(false, |_| true)
+  }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub enum TagKind {
@@ -128,6 +135,53 @@ impl Tag {
   }
 }
 
+/// Helper function to check pubkey ("p") tag.
+/// If tag is empty, it is an URL `None`; if it is not empty,
+/// check if can be parsed to URL. If it can, then `Some(url)`,
+/// otherwise it is a pubkey tag and should be added to the vector of pubkeys.
+///
+/// ### Example
+///
+/// ```rust
+///   use nostr_sdk::event::tag::{Tag, UncheckedRecommendRelayURL};
+///   use nostr_sdk::event;
+///
+///   let p_tag_vector: Vec<String> = vec!["p".to_string(), "0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string(), "ws://relay.com".to_string()];
+///   let second_p_tag_vector: Vec<String> = vec!["p".to_string(), "0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string(), "".to_string()];
+///   let third_p_tag_vector: Vec<String> = vec!["p".to_string(), "0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string(), "3854578asdef1238789".to_string()];
+///   
+///   let vec_pubkeys = Vec::from(["0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string()]);
+///   let expected_p_tag = Tag::PubKey(vec_pubkeys, Some(UncheckedRecommendRelayURL("ws://relay.com".to_string())));
+///   assert_eq!(Tag::from_vec(p_tag_vector), expected_p_tag);
+///   
+///   let second_vec_pubkeys = Vec::from(["0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string()]);
+///   let second_expected_p_tag = Tag::PubKey(second_vec_pubkeys, None);
+///   assert_eq!(Tag::from_vec(second_p_tag_vector), second_expected_p_tag);
+///   
+///   let third_vec_pubkeys = Vec::from(["0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string(), "3854578asdef1238789".to_string()]);
+///   let third_expected_p_tag = Tag::PubKey(third_vec_pubkeys, None);
+///   assert_eq!(Tag::from_vec(third_p_tag_vector), third_expected_p_tag);
+///
+///   
+/// ```
+fn match_pubkey_tag_helper(tag: Vec<String>) -> Result<Tag, Error> {
+  // get all values up until last one (exclusive)
+  let tag_len = tag.len();
+  let mut tags = vec![tag[1..(tag_len - 1)].to_vec()].concat();
+
+  let last_value = tag.last().unwrap();
+  // check if it is an URL or pubkey
+  if last_value.is_empty() || UncheckedRecommendRelayURL(last_value.clone()).check_if_url() {
+    Ok(Tag::PubKey(
+      tags.clone(),
+      (!last_value.is_empty()).then_some(UncheckedRecommendRelayURL(last_value.clone())),
+    ))
+  } else {
+    tags.push(last_value.clone());
+    Ok(Tag::PubKey(tags.clone(), None))
+  }
+}
+
 impl<S> TryFrom<Vec<S>> for Tag
 where
   S: Into<String>,
@@ -153,10 +207,7 @@ where
       }
     } else if tag_len == 3 {
       match tag_kind {
-        TagKind::PubKey => Ok(Self::PubKey(
-          vec![tag[1].clone()],
-          (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone())),
-        )),
+        TagKind::PubKey => match_pubkey_tag_helper(tag),
         TagKind::Event => Ok(Self::Event(
           EventId(tag[1].clone()),
           (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone())),
@@ -166,10 +217,7 @@ where
       }
     } else if tag_len == 4 {
       match tag_kind {
-        TagKind::PubKey => Ok(Self::PubKey(
-          tag[1..3].to_vec(),
-          (!tag[3].is_empty()).then_some(UncheckedRecommendRelayURL(tag[3].clone())),
-        )),
+        TagKind::PubKey => match_pubkey_tag_helper(tag),
         TagKind::Event => Ok(Self::Event(
           EventId(tag[1].clone()),
           (!tag[2].is_empty()).then_some(UncheckedRecommendRelayURL(tag[2].clone())),
@@ -179,10 +227,7 @@ where
       }
     } else {
       match tag_kind {
-        TagKind::PubKey => Ok(Self::PubKey(
-          tag[1..tag_len-1].to_vec(),
-          (!tag[tag_len-1].is_empty()).then_some(UncheckedRecommendRelayURL(tag[tag_len-1].clone())),
-        )),
+        TagKind::PubKey => match_pubkey_tag_helper(tag),
         _ => Ok(Self::Generic(tag_kind, tag[1..].to_vec())),
       }
     }
@@ -235,7 +280,16 @@ impl Serialize for Tag {
     // deserializer how long is the sequence (vector's length)
     let mut seq = serializer.serialize_seq(Some(data.len()))?;
     // Serialize each element of the Vector
-    for element in data.into_iter() {
+    for element in data.clone().into_iter() {
+      // We don't want to send empty data when it is pubkey tags.
+      // In other words: Tag::PubKey(vec!["potato"], None) should be serialized as
+      // ["p", "potato"] and not ["p", "potato", ""]
+      // The reason is that when replying to an event, we need to add to the "p" tags
+      // all p tags of the event (plus the pubkey of the creator), therefore if we don't 
+      // strip this empty serialization, we would have something like ["somepubkey", "", "anotherpubkey", "anotherone"] and so on.
+      if data.first().unwrap().contains('p') && element.is_empty() {
+        continue;
+      }
       seq.serialize_element(&element)?;
     }
     // Finalize the serialization and return the result
@@ -269,14 +323,14 @@ mod tests {
   fn make_event_tag_sut(without_relay: bool, without_marker: bool) -> (Tag, String, Vec<String>) {
     let mut event = Tag::Event(
       EventId(String::from("event")),
-      Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+      Some(UncheckedRecommendRelayURL(String::from("ws://relay.com"))),
       Some(Marker::Root),
     );
-    let mut serialized_event = "[\"e\",\"event\",\"relay.com\",\"root\"]".to_string();
+    let mut serialized_event = "[\"e\",\"event\",\"ws://relay.com\",\"root\"]".to_string();
     let mut expected_vector: Vec<String> = vec![
       String::from("e"),
       String::from("event"),
-      String::from("relay.com"),
+      String::from("ws://relay.com"),
       String::from("root"),
     ];
 
@@ -296,14 +350,14 @@ mod tests {
     } else if without_marker {
       event = Tag::Event(
         EventId(String::from("event")),
-        Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+        Some(UncheckedRecommendRelayURL(String::from("ws://relay.com"))),
         None,
       );
-      serialized_event = "[\"e\",\"event\",\"relay.com\"]".to_string();
+      serialized_event = "[\"e\",\"event\",\"ws://relay.com\"]".to_string();
       expected_vector = vec![
         String::from("e"),
         String::from("event"),
-        String::from("relay.com"),
+        String::from("ws://relay.com"),
       ];
     }
 
@@ -316,13 +370,13 @@ mod tests {
   ) -> (Tag, String, Vec<String>) {
     let mut pubkey = Tag::PubKey(
       vec![String::from("pubkey")],
-      Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+      Some(UncheckedRecommendRelayURL(String::from("ws://relay.com"))),
     );
-    let mut expected_pubkey: String = "[\"p\",\"pubkey\",\"relay.com\"]".to_string();
+    let mut expected_pubkey: String = "[\"p\",\"pubkey\",\"ws://relay.com\"]".to_string();
     let mut expected_vector: Vec<String> = vec![
       String::from("p"),
       String::from("pubkey"),
-      String::from("relay.com"),
+      String::from("ws://relay.com"),
     ];
 
     if more_than_one_pubkey {
@@ -332,21 +386,21 @@ mod tests {
           String::from("pubkey2"),
           String::from("pubkey3"),
         ],
-        Some(UncheckedRecommendRelayURL(String::from("relay.com"))),
+        Some(UncheckedRecommendRelayURL(String::from("ws://relay.com"))),
       );
-      expected_pubkey = "[\"p\",\"pubkey\",\"pubkey2\",\"pubkey3\",\"relay.com\"]".to_string();
+      expected_pubkey = "[\"p\",\"pubkey\",\"pubkey2\",\"pubkey3\",\"ws://relay.com\"]".to_string();
       expected_vector = vec![
         String::from("p"),
         String::from("pubkey"),
         String::from("pubkey2"),
         String::from("pubkey3"),
-        String::from("relay.com"),
+        String::from("ws://relay.com"),
       ];
     }
 
     if without_relay {
       pubkey = Tag::PubKey(vec![String::from("pubkey")], None);
-      expected_pubkey = "[\"p\",\"pubkey\",\"\"]".to_string();
+      expected_pubkey = "[\"p\",\"pubkey\"]".to_string();
       expected_vector = vec![String::from("p"), String::from("pubkey"), String::from("")];
 
       if more_than_one_pubkey {
@@ -358,7 +412,7 @@ mod tests {
           ],
           None,
         );
-        expected_pubkey = "[\"p\",\"pubkey\",\"pubkey2\",\"pubkey3\",\"\"]".to_string();
+        expected_pubkey = "[\"p\",\"pubkey\",\"pubkey2\",\"pubkey3\"]".to_string();
         expected_vector = vec![
           String::from("p"),
           String::from("pubkey"),
@@ -370,6 +424,73 @@ mod tests {
     }
 
     (pubkey, expected_pubkey, expected_vector)
+  }
+
+  #[test]
+  fn test_check_if_url_method_of_uncheckedurl_struct() {
+    let urls = vec![
+      "ws://127.0.0.1:8080/".to_string(),
+      "wss://relay.damus.com/".to_string(),
+      "ws://127.0.0.1/".to_string(),
+    ];
+    for url in urls {
+      println!("{url}");
+      let unchecked_url = UncheckedRecommendRelayURL(url);
+      assert!(unchecked_url.check_if_url());
+    }
+  }
+
+  #[test]
+  fn should_deserialize_pubkey_tag_correctly_when_diverse_elements_in_it() {
+    let p_tag_vector: Vec<String> = vec![
+      "p".to_string(),
+      "0854578asdef1238789".to_string(),
+      "1854578asdef1238789".to_string(),
+      "2854578asdef1238789".to_string(),
+      "ws://relay.com".to_string(),
+    ];
+    let second_p_tag_vector: Vec<String> = vec![
+      "p".to_string(),
+      "0854578asdef1238789".to_string(),
+      "1854578asdef1238789".to_string(),
+      "2854578asdef1238789".to_string(),
+      "".to_string(),
+    ];
+    let third_p_tag_vector: Vec<String> = vec![
+      "p".to_string(),
+      "0854578asdef1238789".to_string(),
+      "1854578asdef1238789".to_string(),
+      "2854578asdef1238789".to_string(),
+      "3854578asdef1238789".to_string(),
+    ];
+
+    let vec_pubkeys = Vec::from([
+      "0854578asdef1238789".to_string(),
+      "1854578asdef1238789".to_string(),
+      "2854578asdef1238789".to_string(),
+    ]);
+    let expected_p_tag = Tag::PubKey(
+      vec_pubkeys,
+      Some(UncheckedRecommendRelayURL("ws://relay.com".to_string())),
+    );
+    assert_eq!(Tag::from_vec(p_tag_vector), expected_p_tag);
+
+    let second_vec_pubkeys = Vec::from([
+      "0854578asdef1238789".to_string(),
+      "1854578asdef1238789".to_string(),
+      "2854578asdef1238789".to_string(),
+    ]);
+    let second_expected_p_tag = Tag::PubKey(second_vec_pubkeys, None);
+    assert_eq!(Tag::from_vec(second_p_tag_vector), second_expected_p_tag);
+
+    let third_vec_pubkeys = Vec::from([
+      "0854578asdef1238789".to_string(),
+      "1854578asdef1238789".to_string(),
+      "2854578asdef1238789".to_string(),
+      "3854578asdef1238789".to_string(),
+    ]);
+    let third_expected_p_tag = Tag::PubKey(third_vec_pubkeys, None);
+    assert_eq!(Tag::from_vec(third_p_tag_vector), third_expected_p_tag);
   }
 
   #[test]
@@ -481,7 +602,8 @@ mod tests {
     assert_eq!(generic, Tag::from_vec(expected_generic_vector));
 
     // Pubkey (one pubkey) - as_vec
-    let (pubkey_tag_complete, _, expected_pubkey_tag_complete_vector) = make_pubkey_tag_sut(false, false);
+    let (pubkey_tag_complete, _, expected_pubkey_tag_complete_vector) =
+      make_pubkey_tag_sut(false, false);
     let (pubkey_tag_without_relay, _, expected_pubkey_tag_without_relay_vector) =
       make_pubkey_tag_sut(true, false);
     assert_eq!(
@@ -504,7 +626,8 @@ mod tests {
     );
 
     // Pubkey (more than one pubkey) - as_vec
-    let (pubkey_tag_complete, _, expected_pubkey_tag_complete_vector) = make_pubkey_tag_sut(false, true);
+    let (pubkey_tag_complete, _, expected_pubkey_tag_complete_vector) =
+      make_pubkey_tag_sut(false, true);
     let (pubkey_tag_without_relay, _, expected_pubkey_tag_without_relay_vector) =
       make_pubkey_tag_sut(true, true);
     assert_eq!(

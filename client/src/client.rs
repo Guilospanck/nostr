@@ -113,6 +113,10 @@ impl Client {
     since_the_epoch.as_secs()
   }
 
+  pub fn get_hex_public_key(&self) -> String {
+    self.keys.public_key.to_hex()
+  }
+
   // TODO: put this method back to private
   pub fn create_event(&self, kind: EventKind, content: String, tags: Option<Vec<Tag>>) -> Event {
     let pubkey = self.keys.public_key.to_hex();
@@ -141,15 +145,17 @@ impl Client {
       Some(marker),
     );
 
-    // TODO: only add pubkey if there is something there (do not add empty ones)
-    // p tags
-    let mut pubkeys_from_event_referenced: Vec<String> = vec![];
+    // whenever replying to an event, the p tag should have at least the pubkey of the creator of the event
+    let mut pubkeys_from_event_referenced: Vec<String> = vec![event_referenced.pubkey];
     for tag in event_referenced.tags {
       if let Tag::PubKey(event_pubkey_tag_pubkey, _) = tag {
-        pubkeys_from_event_referenced.extend_from_slice(&event_pubkey_tag_pubkey);
+        if !event_pubkey_tag_pubkey.is_empty() {
+          pubkeys_from_event_referenced.extend_from_slice(&event_pubkey_tag_pubkey);
+        }
       }
     }
-    let p_tag = Tag::PubKey(pubkeys_from_event_referenced, Some(recommended_relay));
+
+    let p_tag = Tag::PubKey(pubkeys_from_event_referenced, None);
 
     let tags = vec![e_tag, p_tag];
 
