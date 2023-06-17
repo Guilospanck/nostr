@@ -55,9 +55,10 @@ jobs:
       run: |
         find . -name '*.gcda' -delete
         cargo install grcov --force;
+        rm -rf lcov.info;
         cargo test $CARGO_OPTIONS --tests;    
         zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`;
-        grcov ccov.zip -s . -t lcov --llvm --ignore-not-existing --ignore "/*" -o lcov.info;
+        grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
 
     # Upload to CodeCov
     - name: Upload to CodeCov
