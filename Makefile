@@ -44,3 +44,7 @@ relay-upload-compiled-to-server:
 ##! Tag and push it. Example: ❯ make tag-and-push new_tag=v0.0.2
 tag-and-push:
 	git tag -a ${new_tag} && git push origin ${new_tag}
+
+##! Generate new test coverage
+coverage:
+	./generate_coverage.sh
