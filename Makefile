@@ -34,6 +34,7 @@ nostr-sdk-run-tests:
 ##! All
 run-all-clippy: relay-run-clippy client-run-clippy nostr-sdk-run-clippy
 
+##! If you wanna run them in a serial way, pass SERIAL=true to the command. Ex.: make run-all-tests SERIAL=true
 run-all-tests: relay-run-tests client-run-tests nostr-sdk-run-tests
 
 ##! Only in dev
