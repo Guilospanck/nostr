@@ -3,7 +3,7 @@ use log::debug;
 use std::{
   collections::HashMap,
   sync::Arc,
-  time::{SystemTime, UNIX_EPOCH},
+  time::{Duration, SystemTime, UNIX_EPOCH},
   vec,
 };
 use tokio::sync::Mutex;
@@ -37,11 +37,21 @@ use crate::{
   pool::RelayPool,
 };
 
+#[cfg(not(test))]
+fn get_time_now() -> SystemTime {
+  SystemTime::now()
+}
+
+#[cfg(test)]
+fn get_time_now() -> SystemTime {
+  UNIX_EPOCH + Duration::new(20, 0)
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct Metadata {
-  name: String,
-  about: String,
-  picture: String,
+pub struct Metadata {
+  pub name: String,
+  pub about: String,
+  pub picture: String,
 }
 
 impl Metadata {
@@ -53,7 +63,7 @@ impl Metadata {
 #[derive(Debug)]
 pub struct Client {
   keys: Keys,
-  metadata: Metadata,
+  pub metadata: Metadata,
   subscriptions: Arc<Mutex<HashMap<String, Vec<Filter>>>>,
   pool: RelayPool,
 }
@@ -106,8 +116,8 @@ impl Client {
   }
 
   fn get_timestamp_in_seconds(&self) -> u64 {
-    let start = SystemTime::now();
-    let since_the_epoch = start
+    let start = get_time_now();
+    let since_the_epoch: Duration = start
       .duration_since(UNIX_EPOCH)
       .expect("Time went backwards");
     since_the_epoch.as_secs()
@@ -307,5 +317,59 @@ impl Client {
 
   pub async fn get_notifications(&self) {
     self.pool.notifications().await;
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[cfg(test)]
+  use pretty_assertions::assert_eq;
+
+  #[test]
+  fn metadata() {
+    // arrange
+    let name = "Client test";
+    let about = "Client about";
+    let picture = "client.picture.com";
+
+    let mut client = Client::new();
+
+    // act
+    client.name(name).about(about).picture(picture);
+
+    // assert
+    assert_eq!(client.metadata.name, name.to_string());
+    assert_eq!(client.metadata.about, about.to_string());
+    assert_eq!(client.metadata.picture, picture.to_string());
+
+    client
+      .name("potato")
+      .about("anotherpotato")
+      .picture("picturepotato");
+    assert_eq!(client.metadata.name, "potato".to_string());
+    assert_eq!(client.metadata.about, "anotherpotato".to_string());
+    assert_eq!(client.metadata.picture, "picturepotato".to_string());
+  }
+
+  #[tokio::test]
+  async fn add_and_remove_relay() {
+    // arrange
+    let relay = "relay1".to_string();
+    let mut client = Client::new();
+
+    client.add_relay(relay.clone()).await;
+    assert_eq!(client.pool.relays().await.len(), 2);
+
+    client.remove_relay(relay).await;
+    assert_eq!(client.pool.relays().await.len(), 1);
+  }
+
+  #[test]
+  fn get_timestamp_in_seconds() {
+    let client = Client::new();
+    let timestamp = client.get_timestamp_in_seconds();
+    assert_eq!(timestamp, 20);
   }
 }
