@@ -56,7 +56,8 @@ jobs:
         find . -name '*.gcda' -delete
         cargo install grcov --force;
         rm -rf lcov.info;
-        cargo test $CARGO_OPTIONS --tests;    
+        sudo apt install make -y
+        make run-all-tests $CARGO_OPTIONS;    
         zip -0 ccov.zip `find . \( -name "$PROJECT_NAME_UNDERSCORE*.gc*" \) -print`;
         grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
 
