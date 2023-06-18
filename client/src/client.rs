@@ -42,9 +42,11 @@ fn get_time_now() -> SystemTime {
   SystemTime::now()
 }
 
+#[allow(dead_code)]
+const SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST: u64 = 20u64;
 #[cfg(test)]
 fn get_time_now() -> SystemTime {
-  UNIX_EPOCH + Duration::new(20, 0)
+  UNIX_EPOCH + Duration::new(SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST, 0)
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -127,8 +129,7 @@ impl Client {
     self.keys.public_key.to_hex()
   }
 
-  // TODO: put this method back to private
-  pub fn create_event(&self, kind: EventKind, content: String, tags: Option<Vec<Tag>>) -> Event {
+  fn create_event(&self, kind: EventKind, content: String, tags: Option<Vec<Tag>>) -> Event {
     let pubkey = self.keys.public_key.to_hex();
     let created_at = self.get_timestamp_in_seconds();
     let tags = tags.unwrap_or(vec![]);
@@ -138,20 +139,20 @@ impl Client {
     event
   }
 
-  pub async fn reply_to_event(
+  pub async fn create_reply_to_event(
     &self,
     event_referenced: Event,
     recommended_relay_url: Option<UncheckedRecommendRelayURL>,
     marker: Marker,
     content: String,
-  ) {
+  ) -> ClientToRelayCommEvent {
     let event_id_referenced = EventId(event_referenced.id);
     let recommended_relay = recommended_relay_url.unwrap_or(UncheckedRecommendRelayURL::default());
 
     // e tags
     let e_tag = Tag::Event(
       event_id_referenced,
-      Some(recommended_relay.clone()),
+      Some(recommended_relay),
       Some(marker),
     );
 
@@ -169,13 +170,10 @@ impl Client {
 
     let tags = vec![e_tag, p_tag];
 
-    let to_publish = ClientToRelayCommEvent {
+    ClientToRelayCommEvent {
       event: self.create_event(EventKind::Text, content, Some(tags)),
       ..Default::default()
     }
-    .as_json();
-
-    self.publish(to_publish).await
   }
 
   pub async fn publish_text_note(&self, note: String) {
@@ -326,6 +324,7 @@ mod tests {
 
   #[cfg(test)]
   use pretty_assertions::assert_eq;
+  use serde_json::json;
 
   #[test]
   fn metadata() {
@@ -370,6 +369,66 @@ mod tests {
   fn get_timestamp_in_seconds() {
     let client = Client::new();
     let timestamp = client.get_timestamp_in_seconds();
-    assert_eq!(timestamp, 20);
+    assert_eq!(timestamp, SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST);
+  }
+
+  #[test]
+  fn create_event() {
+    let client = Client::new();
+    let kind = EventKind::Text;
+    let content = String::from("Content test");
+    let tags = None;
+
+    let event = client.create_event(kind, content.clone(), tags);
+
+    assert_eq!(event.content, content);
+    assert_eq!(event.kind, kind);
+    assert_eq!(event.tags, []);
+    assert_eq!(event.pubkey, client.get_hex_public_key());
+    assert_eq!(
+      event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
+  }
+
+  #[tokio::test]
+  async fn create_reply_to_event() {
+    let client = Client::new();
+    let kind = EventKind::Text;
+    let content = String::from("Content test");
+    let tags = None;
+    let event = client.create_event(kind, content.clone(), tags);
+
+    let recommended_relay_url = None;
+    let content_for_reply = String::from("Replying to event");
+    let marker = Marker::Root;
+    let replyed_event = client
+      .create_reply_to_event(
+        event.clone(),
+        recommended_relay_url,
+        marker.clone(),
+        content_for_reply.clone(),
+      )
+      .await;
+
+    let tags_json_string = serde_json::to_string(&replyed_event.event.tags).unwrap();
+
+    let expected_tags = json!([
+      [
+        "e".to_string(),
+        event.id,
+        "".to_string(),
+        marker.to_string()
+      ],
+      ["p".to_string(), client.get_hex_public_key()]
+    ])
+    .to_string();
+
+    assert_eq!(replyed_event.event.content, content_for_reply);
+    assert_eq!(tags_json_string, expected_tags);
+    assert_eq!(
+      event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
   }
 }
