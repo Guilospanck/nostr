@@ -39,9 +39,24 @@ impl<'a> ClientDatabase<'a> for SubscriptionsTable {
 }
 
 impl SubscriptionsTable {
+  #[cfg(not(test))]
   pub fn new() -> Self {
     fs::create_dir_all("db/").unwrap();
     let db = Database::create(format!("db/{TABLE_NAME}.redb")).unwrap();
+
+    {
+      let write_txn = db.begin_write().unwrap();
+      write_txn.open_table(SUBSCRIPTIONS_TABLE).unwrap(); // this basically just creates the table if doesn't exist
+      write_txn.commit().unwrap();
+    }
+
+    Self { db }
+  }
+
+  #[cfg(test)]
+  pub fn new(dir: &str, file: &str) -> Self {
+    fs::create_dir_all(format!("{dir}/")).unwrap();
+    let db = Database::create(format!("{dir}/{file}.redb")).unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();

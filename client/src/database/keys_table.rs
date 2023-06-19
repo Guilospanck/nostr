@@ -48,10 +48,26 @@ impl<'a> ClientDatabase<'a> for KeysTable {
 }
 
 impl KeysTable {
+  #[cfg(not(test))]
   pub fn new() -> Self {
     let keys = Keys::default();
     fs::create_dir_all("db/").unwrap();
     let db = Database::create(format!("db/{TABLE_NAME}.redb")).unwrap();
+
+    {
+      let write_txn = db.begin_write().unwrap();
+      write_txn.open_table(KEYS_TABLE).unwrap(); // this basically just creates the table if doesn't exist
+      write_txn.commit().unwrap();
+    }
+
+    Self { db, keys }
+  }
+
+  #[cfg(test)]
+  pub fn new(dir: &str, file: &str) -> Self {
+    let keys = Keys::default();
+    fs::create_dir_all(format!("{dir}/")).unwrap();
+    let db = Database::create(format!("{dir}/{file}.redb")).unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();

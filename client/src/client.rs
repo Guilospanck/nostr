@@ -67,25 +67,51 @@ pub struct Client {
   keys: Keys,
   pub metadata: Metadata,
   subscriptions: Arc<Mutex<HashMap<String, Vec<Filter>>>>,
+  subscriptions_db: SubscriptionsTable,
   pool: RelayPool,
 }
 
 impl Default for Client {
+  #[cfg(test)]
+  fn default() -> Self {
+    Self::new("", "")
+  }
+  #[cfg(not(test))]
   fn default() -> Self {
     Self::new()
   }
 }
 
 impl Client {
+  #[cfg(not(test))]
   pub fn new() -> Self {
     let keys = KeysTable::new().get_client_keys().unwrap();
-    let subscriptions = SubscriptionsTable::new().get_all_subscriptions().unwrap();
+    let subscriptions_db = SubscriptionsTable::new();
+    let subscriptions = subscriptions_db.get_all_subscriptions().unwrap();
 
     let pool = RelayPool::new();
 
     Self {
       keys,
       subscriptions: Arc::new(Mutex::new(subscriptions)),
+      subscriptions_db,
+      metadata: Metadata::default(),
+      pool,
+    }
+  }
+
+  #[cfg(test)]
+  pub fn new(dir: &str, file: &str) -> Self {
+    let keys = KeysTable::new(dir, file).get_client_keys().unwrap();
+    let subscriptions_db = SubscriptionsTable::new(dir, file);
+    let subscriptions = subscriptions_db.get_all_subscriptions().unwrap();
+
+    let pool = RelayPool::new();
+
+    Self {
+      keys,
+      subscriptions: Arc::new(Mutex::new(subscriptions)),
+      subscriptions_db,
       metadata: Metadata::default(),
       pool,
     }
@@ -150,11 +176,7 @@ impl Client {
     let recommended_relay = recommended_relay_url.unwrap_or(UncheckedRecommendRelayURL::default());
 
     // e tags
-    let e_tag = Tag::Event(
-      event_id_referenced,
-      Some(recommended_relay),
-      Some(marker),
-    );
+    let e_tag = Tag::Event(event_id_referenced, Some(recommended_relay), Some(marker));
 
     // whenever replying to an event, the p tag should have at least the pubkey of the creator of the event
     let mut pubkeys_from_event_referenced: Vec<String> = vec![event_referenced.pubkey];
@@ -228,7 +250,7 @@ impl Client {
 
     // save to db
     let filters_string = serde_json::to_string(&filters).unwrap();
-    SubscriptionsTable::new().add_new_subscription(&subscription_id, &filters_string);
+    self.subscriptions_db.add_new_subscription(&subscription_id, &filters_string);
 
     // save to memory
     self
@@ -252,7 +274,7 @@ impl Client {
       .await;
 
     // remove from db
-    SubscriptionsTable::new().remove_subscription(subscription_id);
+    self.subscriptions_db.remove_subscription(subscription_id);
 
     // remove from memory
     let mut subscriptions = self.subscriptions().await;
@@ -325,6 +347,11 @@ mod tests {
   #[cfg(test)]
   use pretty_assertions::assert_eq;
   use serde_json::json;
+  use std::fs;
+
+  fn remove_dir(dir: &str) {
+    fs::remove_dir_all(format!("{dir}/")).unwrap();
+  }
 
   #[test]
   fn metadata() {
@@ -333,7 +360,7 @@ mod tests {
     let about = "Client about";
     let picture = "client.picture.com";
 
-    let mut client = Client::new();
+    let mut client = Client::new("metadata", "metadata");
 
     // act
     client.name(name).about(about).picture(picture);
@@ -350,31 +377,37 @@ mod tests {
     assert_eq!(client.metadata.name, "potato".to_string());
     assert_eq!(client.metadata.about, "anotherpotato".to_string());
     assert_eq!(client.metadata.picture, "picturepotato".to_string());
+
+    remove_dir("metadata");
   }
 
   #[tokio::test]
   async fn add_and_remove_relay() {
     // arrange
     let relay = "relay1".to_string();
-    let mut client = Client::new();
+    let mut client = Client::new("add_remove_relay", "add_remove_relay");
 
     client.add_relay(relay.clone()).await;
     assert_eq!(client.pool.relays().await.len(), 2);
 
     client.remove_relay(relay).await;
     assert_eq!(client.pool.relays().await.len(), 1);
+
+    remove_dir("add_remove_relay");
   }
 
   #[test]
   fn get_timestamp_in_seconds() {
-    let client = Client::new();
+    let client = Client::new("timestamp", "timestamp");
     let timestamp = client.get_timestamp_in_seconds();
     assert_eq!(timestamp, SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST);
+
+    remove_dir("timestamp");
   }
 
   #[test]
   fn create_event() {
-    let client = Client::new();
+    let client = Client::new("create_event", "create_event");
     let kind = EventKind::Text;
     let content = String::from("Content test");
     let tags = None;
@@ -389,11 +422,13 @@ mod tests {
       event.created_at,
       SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
     );
+
+    remove_dir("create_event");
   }
 
   #[tokio::test]
   async fn create_reply_to_event() {
-    let client = Client::new();
+    let client = Client::new("create_reply_to_event", "create_reply_to_event");
     let kind = EventKind::Text;
     let content = String::from("Content test");
     let tags = None;
@@ -430,5 +465,7 @@ mod tests {
       event.created_at,
       SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
     );
+
+    remove_dir("create_reply_to_event");
   }
 }
