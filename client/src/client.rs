@@ -6,7 +6,7 @@ use std::{
   time::{Duration, SystemTime, UNIX_EPOCH},
   vec,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -135,7 +135,10 @@ impl Client {
   pub async fn add_relay(&mut self, relay: String) {
     self
       .pool
-      .add_relay(relay.clone(), Message::from(self.get_event_metadata()))
+      .add_relay(
+        relay.clone(),
+        Message::from(self.get_event_metadata().as_json()),
+      )
       .await;
   }
 
@@ -165,7 +168,7 @@ impl Client {
     event
   }
 
-  pub async fn create_reply_to_event(
+  pub fn create_reply_to_event(
     &self,
     event_referenced: Event,
     recommended_relay_url: Option<UncheckedRecommendRelayURL>,
@@ -198,66 +201,52 @@ impl Client {
     }
   }
 
-  pub async fn publish_text_note(&self, note: String) {
-    let to_publish = ClientToRelayCommEvent {
+  pub fn create_text_note_event(&self, note: String) -> ClientToRelayCommEvent {
+    ClientToRelayCommEvent {
       event: self.create_event(EventKind::Text, note, None),
       ..Default::default()
     }
-    .as_json();
-
-    self.publish(to_publish).await;
   }
 
-  pub async fn publish(&self, to_publish: String) {
-    self
-      .pool
-      .broadcast_messages(Message::from(to_publish))
-      .await;
-  }
-
-  pub fn get_event_metadata(&self) -> String {
+  pub fn get_event_metadata(&self) -> ClientToRelayCommEvent {
     ClientToRelayCommEvent {
       event: self.create_event(EventKind::Metadata, self.metadata.as_str(), None),
       ..Default::default()
     }
-    .as_json()
   }
 
-  pub async fn send_updated_metadata(&self) {
-    self
-      .pool
-      .broadcast_messages(Message::from(self.get_event_metadata()))
-      .await;
+  fn get_filter_subscription_request(&self, filters: Vec<Filter>) -> ClientToRelayCommRequest {
+    let subscription_id = Uuid::new_v4().to_string();
+
+    ClientToRelayCommRequest {
+      filters,
+      subscription_id,
+      ..Default::default()
+    }
   }
 
   pub async fn subscribe(&self, filters: Vec<Filter>) {
-    let subscription_id = Uuid::new_v4().to_string();
-
-    let filter_subscription = ClientToRelayCommRequest {
-      filters: filters.clone(),
-      subscription_id: subscription_id.clone(),
-      ..Default::default()
-    }
-    .as_json();
+    let filter_subscription = self.get_filter_subscription_request(filters.clone());
 
     debug!("SUBSCRIBING to {:?}", filter_subscription);
 
     // Broadcast REQ subscription to all relays in the pool
     self
       .pool
-      .broadcast_messages(Message::from(filter_subscription))
+      .broadcast_messages(Message::from(filter_subscription.as_json()))
       .await;
 
     // save to db
     let filters_string = serde_json::to_string(&filters).unwrap();
-    self.subscriptions_db.add_new_subscription(&subscription_id, &filters_string);
+    self
+      .subscriptions_db
+      .add_new_subscription(&filter_subscription.subscription_id, &filters_string);
 
     // save to memory
     self
-      .subscriptions
-      .lock()
+      .subscriptions_mut()
       .await
-      .insert(subscription_id, filters);
+      .insert(filter_subscription.subscription_id, filters);
   }
 
   pub async fn unsubscribe(&self, subscription_id: &str) {
@@ -277,8 +266,7 @@ impl Client {
     self.subscriptions_db.remove_subscription(subscription_id);
 
     // remove from memory
-    let mut subscriptions = self.subscriptions().await;
-    subscriptions.remove(subscription_id);
+    self.subscriptions_mut().await.remove(subscription_id);
   }
 
   pub async fn subscribe_to_all_stored_requests(&self) {
@@ -324,6 +312,24 @@ impl Client {
     subscriptions.clone()
   }
 
+  pub async fn subscriptions_mut(&self) -> MutexGuard<HashMap<String, Vec<Filter>>> {
+    self.subscriptions.lock().await
+  }
+
+  pub async fn send_updated_metadata(&self) {
+    self
+      .pool
+      .broadcast_messages(Message::from(self.get_event_metadata().as_json()))
+      .await;
+  }
+
+  pub async fn publish(&self, to_publish: String) {
+    self
+      .pool
+      .broadcast_messages(Message::from(to_publish))
+      .await;
+  }
+
   pub async fn close_connection(&self, relay_url: String) {
     self.pool.disconnect_relay(relay_url).await;
   }
@@ -331,7 +337,7 @@ impl Client {
   pub async fn connect(&self) {
     self
       .pool
-      .connect(Message::from(self.get_event_metadata()))
+      .connect(Message::from(self.get_event_metadata().as_json()))
       .await;
   }
 
@@ -426,25 +432,23 @@ mod tests {
     remove_dir("create_event");
   }
 
-  #[tokio::test]
-  async fn create_reply_to_event() {
+  #[test]
+  fn create_reply_to_event() {
     let client = Client::new("create_reply_to_event", "create_reply_to_event");
     let kind = EventKind::Text;
     let content = String::from("Content test");
     let tags = None;
-    let event = client.create_event(kind, content.clone(), tags);
+    let event = client.create_event(kind, content, tags);
 
     let recommended_relay_url = None;
     let content_for_reply = String::from("Replying to event");
     let marker = Marker::Root;
-    let replyed_event = client
-      .create_reply_to_event(
-        event.clone(),
-        recommended_relay_url,
-        marker.clone(),
-        content_for_reply.clone(),
-      )
-      .await;
+    let replyed_event = client.create_reply_to_event(
+      event.clone(),
+      recommended_relay_url,
+      marker.clone(),
+      content_for_reply.clone(),
+    );
 
     let tags_json_string = serde_json::to_string(&replyed_event.event.tags).unwrap();
 
@@ -467,5 +471,85 @@ mod tests {
     );
 
     remove_dir("create_reply_to_event");
+  }
+
+  #[test]
+  fn create_text_note_event() {
+    let client = Client::new("create_text_note_event", "create_text_note_event");
+    let note = String::from("Test Note");
+
+    let text_note_event = client.create_text_note_event(note.clone());
+
+    assert_eq!(text_note_event.event.content, note);
+    assert_eq!(text_note_event.event.kind, EventKind::Text);
+    assert_eq!(
+      text_note_event.event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
+
+    remove_dir("create_text_note_event");
+  }
+
+  #[test]
+  fn get_event_metadata() {
+    let client = Client::new("get_event_metadata", "get_event_metadata");
+
+    let metadata_event = client.get_event_metadata();
+
+    assert_eq!(metadata_event.event.content, client.metadata.as_str());
+    assert_eq!(metadata_event.event.kind, EventKind::Metadata);
+    assert_eq!(
+      metadata_event.event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
+
+    remove_dir("get_event_metadata");
+  }
+
+  #[test]
+  fn get_filter_subscription_request() {
+    let client = Client::new(
+      "get_filter_subscription_request",
+      "get_filter_subscription_request",
+    );
+    let filter = Filter::default();
+    let metadata_event = client.get_filter_subscription_request(vec![filter.clone()]);
+
+    assert_eq!(metadata_event.filters, vec![filter]);
+    assert_eq!(metadata_event.code, String::from("REQ"));
+
+    remove_dir("get_filter_subscription_request");
+  }
+
+  #[tokio::test]
+  async fn subscribe_and_unsubcribe() {
+    let client = Client::new("subscribe_and_unsubcribe", "subscribe_and_unsubcribe");
+    // Initial
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 0);
+    assert_eq!(subscriptions_from_db.len(), 0);
+
+    // subscribe
+    let filter = Filter::default();
+    client.subscribe(vec![filter]).await;
+
+    // after subscription
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 1);
+    assert_eq!(subscriptions_from_db.len(), 1);
+
+    // unsubscribe
+    let subscription_id = subscriptions.keys().next().unwrap();
+    client.unsubscribe(subscription_id).await;
+
+    // after unsubscribtion
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 0);
+    assert_eq!(subscriptions_from_db.len(), 0);
+
+    remove_dir("subscribe_and_unsubcribe");
   }
 }
