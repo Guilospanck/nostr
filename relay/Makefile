@@ -18,10 +18,8 @@ run-unit-tests-one-after-another:
 
 run-all-tests:
 	@if [ -n "$(SERIAL)" ]; then \
-		echo "running this serial ${SERIAL}"; \
 		${MAKE} run-doc-tests-one-after-another run-unit-tests-one-after-another; \
 	else \
-		echo "NOT USING SERIAL ${SERIAL}"; \
 		${MAKE} run-doc-tests run-unit-tests; \
 	fi
 
