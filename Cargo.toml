@@ -1,5 +1,5 @@
 [workspace]
-members = ["relay","client","nostr-sdk"]
+members = ["crates/*"]
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.

@@ -1,35 +1,35 @@
 ##! relay
 relay-run:
-	$(MAKE) -C relay/ run
+	$(MAKE) -C crates/relay/ run
 
 relay-run-clippy:
-	$(MAKE) -C relay/ run-clippy
+	$(MAKE) -C crates/relay/ run-clippy
 
 relay-run-tests:
-	$(MAKE) -C relay/ run-all-tests
+	$(MAKE) -C crates/relay/ run-all-tests
 
 check-docker-engine-is-running:
 	./check-docker-engine.sh
 
 relay-compile-to-x86_64-unknown-linux-gnu: check-docker-engine-is-running
-	$(MAKE) -C relay/ compile-to-x86_64-unknown-linux-gnu
+	$(MAKE) -C crates/relay/ compile-to-x86_64-unknown-linux-gnu
 
 ##! client
 client-run:
-	$(MAKE) -C client/ run
+	$(MAKE) -C crates/client/ run
 
 client-run-clippy:
-	$(MAKE) -C client/ run-clippy
+	$(MAKE) -C crates/client/ run-clippy
 
 client-run-tests:
-	$(MAKE) -C client/ run-all-tests
+	$(MAKE) -C crates/client/ run-all-tests
 
 ##! sdk
 nostr-sdk-run-clippy:
-	$(MAKE) -C nostr-sdk/ run-clippy
+	$(MAKE) -C crates/nostr-sdk/ run-clippy
 
 nostr-sdk-run-tests:
-	$(MAKE) -C nostr-sdk/ run-all-tests
+	$(MAKE) -C crates/nostr-sdk/ run-all-tests
 
 ##! All
 run-all-clippy: relay-run-clippy client-run-clippy nostr-sdk-run-clippy
