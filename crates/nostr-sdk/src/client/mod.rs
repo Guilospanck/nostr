@@ -74,14 +74,14 @@ pub struct Client {
 
 impl Default for Client {
   fn default() -> Self {
-    Self::new()
+    Self::new(None, None)
   }
 }
 
 impl Client {
-  pub fn new() -> Self {
-    let keys = KeysTable::new().get_client_keys().unwrap();
-    let subscriptions_db = SubscriptionsTable::new();
+  pub fn new(keys_table_name: Option<String>, subscriptions_table_name: Option<String>) -> Self {
+    let keys = KeysTable::new(keys_table_name).get_client_keys().unwrap();
+    let subscriptions_db = SubscriptionsTable::new(subscriptions_table_name);
     let subscriptions = subscriptions_db.get_all_subscriptions().unwrap();
 
     let pool = RelayPool::new();
@@ -326,210 +326,228 @@ impl Client {
   }
 }
 
-// #[cfg(test)]
-// mod tests {
-//   use super::*;
+#[cfg(test)]
+mod tests {
+  use super::*;
 
-//   #[cfg(test)]
-//   use pretty_assertions::assert_eq;
-//   use serde_json::json;
-//   use std::fs;
+  #[cfg(test)]
+  use pretty_assertions::assert_eq;
+  use serde_json::json;
+  use std::fs;
 
-//   fn remove_dir(dir: &str) {
-//     fs::remove_dir_all(format!("{dir}/")).unwrap();
-//   }
+  fn remove_temp_db(table_name: &str) {
+    fs::remove_file(format!("db/{table_name}.redb")).unwrap();
+  }
 
-//   #[test]
-//   fn metadata() {
-//     // arrange
-//     let name = "Client test";
-//     let about = "Client about";
-//     let picture = "client.picture.com";
+  #[test]
+  fn metadata() {
+    // arrange
+    let name = "Client test";
+    let about = "Client about";
+    let picture = "client.picture.com";
 
-//     let mut client = Client::new("metadata", "metadata");
+    let mut client = Client::new(Some("metadata".to_string()), Some("metadata".to_string()));
 
-//     // act
-//     client.name(name).about(about).picture(picture);
+    // act
+    client.name(name).about(about).picture(picture);
 
-//     // assert
-//     assert_eq!(client.metadata.name, name.to_string());
-//     assert_eq!(client.metadata.about, about.to_string());
-//     assert_eq!(client.metadata.picture, picture.to_string());
+    // assert
+    assert_eq!(client.metadata.name, name.to_string());
+    assert_eq!(client.metadata.about, about.to_string());
+    assert_eq!(client.metadata.picture, picture.to_string());
 
-//     client
-//       .name("potato")
-//       .about("anotherpotato")
-//       .picture("picturepotato");
-//     assert_eq!(client.metadata.name, "potato".to_string());
-//     assert_eq!(client.metadata.about, "anotherpotato".to_string());
-//     assert_eq!(client.metadata.picture, "picturepotato".to_string());
+    client
+      .name("potato")
+      .about("anotherpotato")
+      .picture("picturepotato");
+    assert_eq!(client.metadata.name, "potato".to_string());
+    assert_eq!(client.metadata.about, "anotherpotato".to_string());
+    assert_eq!(client.metadata.picture, "picturepotato".to_string());
 
-//     remove_dir("metadata");
-//   }
+    remove_temp_db("metadata");
+  }
 
-//   #[tokio::test]
-//   async fn add_and_remove_relay() {
-//     // arrange
-//     let relay = "relay1".to_string();
-//     let mut client = Client::new("add_remove_relay", "add_remove_relay");
+  #[tokio::test]
+  async fn add_and_remove_relay() {
+    // arrange
+    let relay = "relay1".to_string();
+    let mut client = Client::new(
+      Some("add_remove_relay".to_string()),
+      Some("add_remove_relay".to_string()),
+    );
 
-//     client.add_relay(relay.clone()).await;
-//     assert_eq!(client.pool.relays().await.len(), 2);
+    client.add_relay(relay.clone()).await;
+    assert_eq!(client.pool.relays().await.len(), 1);
 
-//     client.remove_relay(relay).await;
-//     assert_eq!(client.pool.relays().await.len(), 1);
+    client.remove_relay(relay).await;
+    assert!(client.pool.relays().await.is_empty());
 
-//     remove_dir("add_remove_relay");
-//   }
+    remove_temp_db("add_remove_relay");
+  }
 
-//   #[test]
-//   fn get_timestamp_in_seconds() {
-//     let client = Client::new("timestamp", "timestamp");
-//     let timestamp = client.get_timestamp_in_seconds();
-//     assert_eq!(timestamp, SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST);
+  #[test]
+  fn get_timestamp_in_seconds() {
+    let client = Client::new(Some("timestamp".to_string()), Some("timestamp".to_string()));
+    let timestamp = client.get_timestamp_in_seconds();
+    assert_eq!(timestamp, SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST);
 
-//     remove_dir("timestamp");
-//   }
+    remove_temp_db("timestamp");
+  }
 
-//   #[test]
-//   fn create_event() {
-//     let client = Client::new("create_event", "create_event");
-//     let kind = EventKind::Text;
-//     let content = String::from("Content test");
-//     let tags = None;
+  #[test]
+  fn create_event() {
+    let client = Client::new(
+      Some("create_event".to_string()),
+      Some("create_event".to_string()),
+    );
+    let kind = EventKind::Text;
+    let content = String::from("Content test");
+    let tags = None;
 
-//     let event = client.create_event(kind, content.clone(), tags);
+    let event = client.create_event(kind, content.clone(), tags);
 
-//     assert_eq!(event.content, content);
-//     assert_eq!(event.kind, kind);
-//     assert_eq!(event.tags, []);
-//     assert_eq!(event.pubkey, client.get_hex_public_key());
-//     assert_eq!(
-//       event.created_at,
-//       SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
-//     );
+    assert_eq!(event.content, content);
+    assert_eq!(event.kind, kind);
+    assert_eq!(event.tags, []);
+    assert_eq!(event.pubkey, client.get_hex_public_key());
+    assert_eq!(
+      event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
 
-//     remove_dir("create_event");
-//   }
+    remove_temp_db("create_event");
+  }
 
-//   #[test]
-//   fn create_reply_to_event() {
-//     let client = Client::new("create_reply_to_event", "create_reply_to_event");
-//     let kind = EventKind::Text;
-//     let content = String::from("Content test");
-//     let tags = None;
-//     let event = client.create_event(kind, content, tags);
+  #[test]
+  fn create_reply_to_event() {
+    let client = Client::new(
+      Some("create_reply_to_event".to_string()),
+      Some("create_reply_to_event".to_string()),
+    );
+    let kind = EventKind::Text;
+    let content = String::from("Content test");
+    let tags = None;
+    let event = client.create_event(kind, content, tags);
 
-//     let recommended_relay_url = None;
-//     let content_for_reply = String::from("Replying to event");
-//     let marker = Marker::Root;
-//     let replyed_event = client.create_reply_to_event(
-//       event.clone(),
-//       recommended_relay_url,
-//       marker.clone(),
-//       content_for_reply.clone(),
-//     );
+    let recommended_relay_url = None;
+    let content_for_reply = String::from("Replying to event");
+    let marker = Marker::Root;
+    let replyed_event = client.create_reply_to_event(
+      event.clone(),
+      recommended_relay_url,
+      marker.clone(),
+      content_for_reply.clone(),
+    );
 
-//     let tags_json_string = serde_json::to_string(&replyed_event.event.tags).unwrap();
+    let tags_json_string = serde_json::to_string(&replyed_event.event.tags).unwrap();
 
-//     let expected_tags = json!([
-//       [
-//         "e".to_string(),
-//         event.id,
-//         "".to_string(),
-//         marker.to_string()
-//       ],
-//       ["p".to_string(), client.get_hex_public_key()]
-//     ])
-//     .to_string();
+    let expected_tags = json!([
+      [
+        "e".to_string(),
+        event.id,
+        "".to_string(),
+        marker.to_string()
+      ],
+      ["p".to_string(), client.get_hex_public_key()]
+    ])
+    .to_string();
 
-//     assert_eq!(replyed_event.event.content, content_for_reply);
-//     assert_eq!(tags_json_string, expected_tags);
-//     assert_eq!(
-//       event.created_at,
-//       SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
-//     );
+    assert_eq!(replyed_event.event.content, content_for_reply);
+    assert_eq!(tags_json_string, expected_tags);
+    assert_eq!(
+      event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
 
-//     remove_dir("create_reply_to_event");
-//   }
+    remove_temp_db("create_reply_to_event");
+  }
 
-//   #[test]
-//   fn create_text_note_event() {
-//     let client = Client::new("create_text_note_event", "create_text_note_event");
-//     let note = String::from("Test Note");
+  #[test]
+  fn create_text_note_event() {
+    let client = Client::new(
+      Some("create_text_note_event".to_string()),
+      Some("create_text_note_event".to_string()),
+    );
+    let note = String::from("Test Note");
 
-//     let text_note_event = client.create_text_note_event(note.clone());
+    let text_note_event = client.create_text_note_event(note.clone());
 
-//     assert_eq!(text_note_event.event.content, note);
-//     assert_eq!(text_note_event.event.kind, EventKind::Text);
-//     assert_eq!(
-//       text_note_event.event.created_at,
-//       SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
-//     );
+    assert_eq!(text_note_event.event.content, note);
+    assert_eq!(text_note_event.event.kind, EventKind::Text);
+    assert_eq!(
+      text_note_event.event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
 
-//     remove_dir("create_text_note_event");
-//   }
+    remove_temp_db("create_text_note_event");
+  }
 
-//   #[test]
-//   fn get_event_metadata() {
-//     let client = Client::new("get_event_metadata", "get_event_metadata");
+  #[test]
+  fn get_event_metadata() {
+    let client = Client::new(
+      Some("get_event_metadata".to_string()),
+      Some("get_event_metadata".to_string()),
+    );
 
-//     let metadata_event = client.get_event_metadata();
+    let metadata_event = client.get_event_metadata();
 
-//     assert_eq!(metadata_event.event.content, client.metadata.as_str());
-//     assert_eq!(metadata_event.event.kind, EventKind::Metadata);
-//     assert_eq!(
-//       metadata_event.event.created_at,
-//       SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
-//     );
+    assert_eq!(metadata_event.event.content, client.metadata.as_str());
+    assert_eq!(metadata_event.event.kind, EventKind::Metadata);
+    assert_eq!(
+      metadata_event.event.created_at,
+      SECONDS_AFTER_UNIX_EPOCH_FOR_TIME_NOW_CONFIG_TEST
+    );
 
-//     remove_dir("get_event_metadata");
-//   }
+    remove_temp_db("get_event_metadata");
+  }
 
-//   #[test]
-//   fn get_filter_subscription_request() {
-//     let client = Client::new(
-//       "get_filter_subscription_request",
-//       "get_filter_subscription_request",
-//     );
-//     let filter = Filter::default();
-//     let metadata_event = client.get_filter_subscription_request(vec![filter.clone()]);
+  #[test]
+  fn get_filter_subscription_request() {
+    let client = Client::new(
+      Some("get_filter_subscription_request".to_string()),
+      Some("get_filter_subscription_request".to_string()),
+    );
+    let filter = Filter::default();
+    let metadata_event = client.get_filter_subscription_request(vec![filter.clone()]);
 
-//     assert_eq!(metadata_event.filters, vec![filter]);
-//     assert_eq!(metadata_event.code, String::from("REQ"));
+    assert_eq!(metadata_event.filters, vec![filter]);
+    assert_eq!(metadata_event.code, String::from("REQ"));
 
-//     remove_dir("get_filter_subscription_request");
-//   }
+    remove_temp_db("get_filter_subscription_request");
+  }
 
-//   #[tokio::test]
-//   async fn subscribe_and_unsubcribe() {
-//     let client = Client::new("subscribe_and_unsubcribe", "subscribe_and_unsubcribe");
-//     // Initial
-//     let subscriptions = client.subscriptions().await;
-//     let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
-//     assert_eq!(subscriptions.len(), 0);
-//     assert_eq!(subscriptions_from_db.len(), 0);
+  #[tokio::test]
+  async fn subscribe_and_unsubcribe() {
+    let client = Client::new(
+      Some("subscribe_and_unsubcribe".to_string()),
+      Some("subscribe_and_unsubcribe".to_string()),
+    );
+    // Initial
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 0);
+    assert_eq!(subscriptions_from_db.len(), 0);
 
-//     // subscribe
-//     let filter = Filter::default();
-//     client.subscribe(vec![filter]).await;
+    // subscribe
+    let filter = Filter::default();
+    client.subscribe(vec![filter]).await;
 
-//     // after subscription
-//     let subscriptions = client.subscriptions().await;
-//     let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
-//     assert_eq!(subscriptions.len(), 1);
-//     assert_eq!(subscriptions_from_db.len(), 1);
+    // after subscription
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 1);
+    assert_eq!(subscriptions_from_db.len(), 1);
 
-//     // unsubscribe
-//     let subscription_id = subscriptions.keys().next().unwrap();
-//     client.unsubscribe(subscription_id).await;
+    // unsubscribe
+    let subscription_id = subscriptions.keys().next().unwrap();
+    client.unsubscribe(subscription_id).await;
 
-//     // after unsubscribtion
-//     let subscriptions = client.subscriptions().await;
-//     let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
-//     assert_eq!(subscriptions.len(), 0);
-//     assert_eq!(subscriptions_from_db.len(), 0);
+    // after unsubscribtion
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 0);
+    assert_eq!(subscriptions_from_db.len(), 0);
 
-//     remove_dir("subscribe_and_unsubcribe");
-//   }
-// }
+    remove_temp_db("subscribe_and_unsubcribe");
+  }
+}

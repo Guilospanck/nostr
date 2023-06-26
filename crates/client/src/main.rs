@@ -17,7 +17,7 @@ async fn main() {
     data.split(',').map(|v| v.to_string()).collect()
   });
 
-  let mut client = client::Client::new();
+  let mut client = client::Client::new(None, None);
 
   for address in addresses.iter() {
     client.add_relay(address.to_string()).await;

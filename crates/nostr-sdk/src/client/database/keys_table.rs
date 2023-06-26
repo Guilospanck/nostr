@@ -49,15 +49,19 @@ impl<'a> ClientDatabase<'a> for KeysTable {
 
 impl Default for KeysTable {
   fn default() -> Self {
-    Self::new()
+    Self::new(None)
   }
 }
 
 impl KeysTable {
-  pub fn new() -> Self {
+  pub fn new(keys_table_name: Option<String>) -> Self {
     let keys = Keys::default();
     fs::create_dir_all("db/").unwrap();
-    let db = Database::create(format!("db/{TABLE_NAME}.redb")).unwrap();
+    let table_name = match keys_table_name {
+      Some(name) => name,
+      None => TABLE_NAME.to_string()
+    };
+    let db = Database::create(format!("db/{table_name}.redb")).unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();
