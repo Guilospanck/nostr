@@ -1,11 +1,14 @@
 use std::sync::MutexGuard;
 
-use nostr_sdk::{
-  client_to_relay_communication::check_event_match_filter, event::Event,
-  relay_to_client_communication::event::RelayToClientCommEvent,
+use crate::{
+  client::communication_with_relay::check_event_match_filter, event::Event,
+  relay::communication_with_client::event::RelayToClientCommEvent,
 };
 
-use crate::{relay::ClientConnectionInfo, send_to_client::OutboundInfo};
+use crate::relay::{
+  ClientConnectionInfo,
+  send_to_client::OutboundInfo
+};
 
 pub fn on_event_message(
   event: Event,
@@ -50,8 +53,8 @@ mod tests {
     sync::{Arc, Mutex},
   };
 
-  use nostr_sdk::{
-    client_to_relay_communication::request::ClientToRelayCommRequest, event::id::EventId,
+  use crate::{
+    client::communication_with_relay::request::ClientToRelayCommRequest, event::id::EventId,
     filter::Filter,
   };
 

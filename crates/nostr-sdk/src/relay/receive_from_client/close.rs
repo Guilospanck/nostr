@@ -33,7 +33,7 @@ mod tests {
     sync::{Arc, Mutex},
   };
 
-  use nostr_sdk::filter::Filter;
+  use crate::filter::Filter;
 
   use crate::relay::{ClientRequests, Tx};
 

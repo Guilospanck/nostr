@@ -1,6 +1,7 @@
-use client::client;
 use env_logger::Env;
 use futures_util::join;
+
+use nostr_sdk::client;
 
 #[tokio::main]
 async fn main() {
@@ -8,7 +9,9 @@ async fn main() {
   env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
     .try_init()
     .unwrap();
+
   let mut client = client::Client::new();
+
   client.connect().await;
   client.get_notifications().await;
   client
@@ -17,14 +20,18 @@ async fn main() {
     ))
     .await; // jack's pubkey
             // client.follow_myself().await;
-  client.follow_author(String::from("5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835")).await;
+  client
+    .follow_author(String::from(
+      "5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835",
+    ))
+    .await;
   client
     .name("Nostr Client")
     .about("This is a nostr client")
     .picture("someurl.image.com")
     .send_updated_metadata()
     .await;
-  client.add_relay(String::from("wss://relay.damus.io")).await;
+  // client.add_relay(String::from("wss://relay.damus.io")).await;
   // client.add_relay(String::from("wss://nostr.wine")).await;
   // client
   //   .add_relay(String::from("wss://pow.nostrati.com"))

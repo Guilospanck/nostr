@@ -1,8 +1,8 @@
 use std::{net::SocketAddr, sync::MutexGuard, vec};
 
-use nostr_sdk::{
-  client_to_relay_communication::check_event_match_filter, event::Event, filter::Filter,
-  relay_to_client_communication::event::RelayToClientCommEvent,
+use crate::{
+  client::communication_with_relay::check_event_match_filter, event::Event, filter::Filter,
+  relay::communication_with_client::event::RelayToClientCommEvent,
 };
 
 use crate::relay::{ClientConnectionInfo, ClientRequests, Tx};
@@ -99,7 +99,7 @@ mod tests {
     vec,
   };
 
-  use nostr_sdk::{
+  use crate::{
     event::{id::EventId, Timestamp},
     filter::Filter,
   };

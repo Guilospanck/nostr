@@ -1,14 +1,14 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashMap, sync::Arc};
 
+use crate::relay::communication_with_client::{
+  eose::RelayToClientCommEose, event::RelayToClientCommEvent, notice::RelayToClientCommNotice,
+};
 use futures_util::SinkExt;
 use futures_util::StreamExt;
 use log::debug;
 use log::error;
 use log::info;
-use nostr_sdk::relay_to_client_communication::eose::RelayToClientCommEose;
-use nostr_sdk::relay_to_client_communication::event::RelayToClientCommEvent;
-use nostr_sdk::relay_to_client_communication::notice::RelayToClientCommNotice;
 use tokio::sync::MutexGuard;
 use tokio::sync::{
   mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -35,7 +35,7 @@ pub struct RelayData {
   /// Rx part of the channel to receive messages (by this client) from this relay.
   relay_rx: Arc<Mutex<UnboundedReceiver<Message>>>,
   /// Flag to signal if the connection must be closed
-  close_communication: Arc<AtomicBool>
+  close_communication: Arc<AtomicBool>,
 }
 
 impl RelayData {
@@ -48,7 +48,7 @@ impl RelayData {
       pool_task_sender,
       relay_tx,
       relay_rx: Arc::new(Mutex::new(relay_rx)),
-      close_communication
+      close_communication,
     }
   }
 
@@ -127,6 +127,12 @@ pub struct RelayPool {
   relay_pool_task: RelayPoolTask,
 }
 
+impl Default for RelayPool {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl RelayPool {
   pub fn new() -> Self {
     // create channel to allow relays to communicate with the pool
@@ -135,12 +141,8 @@ impl RelayPool {
     // creates the pool task in order to handle messages sent to it
     let relay_pool_task = RelayPoolTask::new(pool_task_receiver);
 
-    // get initial relay
-    let relay_url = String::from("ws://127.0.0.1:8080/");
-    let relay = RelayData::new(relay_url.clone(), pool_task_sender.clone());
-    let mut relays = HashMap::new();
-    relays.insert(relay_url, relay);
-    let relays = Arc::new(Mutex::new(relays));
+    // creates arc mutex of hashmap of relays
+    let relays = Arc::new(Mutex::new(HashMap::new()));
 
     Self {
       relays,

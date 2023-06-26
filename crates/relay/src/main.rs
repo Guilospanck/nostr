@@ -1,5 +1,5 @@
 use env_logger::Env;
-use relay::relay;
+use nostr_sdk::relay;
 
 fn main() {
   dotenv::dotenv().ok();

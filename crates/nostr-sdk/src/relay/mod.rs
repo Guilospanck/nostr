@@ -1,3 +1,9 @@
+pub mod communication_with_client;
+pub mod database;
+pub mod pool;
+pub mod receive_from_client;
+pub mod send_to_client;
+
 use std::{
   env,
   io::Error as IoError,
@@ -13,17 +19,19 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{self, Duration};
 use tokio_tungstenite::tungstenite::Message;
 
-use nostr_sdk::{
-  client_to_relay_communication::{
+use crate::{
+  client::communication_with_relay::{
     close::ClientToRelayCommClose, event::ClientToRelayCommEvent, request::ClientToRelayCommRequest,
   },
   event::Event,
   filter::Filter,
-  relay_to_client_communication::{eose::RelayToClientCommEose, notice::RelayToClientCommNotice},
+  relay::{
+    communication_with_client::{eose::RelayToClientCommEose, notice::RelayToClientCommNotice},
+    database::EventsDB,
+  },
 };
 
-use crate::{
-  db::EventsDB,
+use crate::relay::{
   receive_from_client::{
     close::on_close_message, event::on_event_message, request::on_request_message,
   },

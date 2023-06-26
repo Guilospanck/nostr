@@ -1,7 +1,7 @@
 use redb::{Database, ReadableTable, TableDefinition};
 use std::{collections::HashMap, fs};
 
-use nostr_sdk::filter::Filter;
+use crate::filter::Filter;
 
 use super::{ClientDatabase, Result};
 
@@ -11,6 +11,12 @@ const SUBSCRIPTIONS_TABLE: TableDefinition<&str, &str> = TableDefinition::new(TA
 #[derive(Debug)]
 pub struct SubscriptionsTable {
   db: Database,
+}
+
+impl Default for SubscriptionsTable {
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl<'a> ClientDatabase<'a> for SubscriptionsTable {
@@ -39,24 +45,9 @@ impl<'a> ClientDatabase<'a> for SubscriptionsTable {
 }
 
 impl SubscriptionsTable {
-  #[cfg(not(test))]
   pub fn new() -> Self {
     fs::create_dir_all("db/").unwrap();
     let db = Database::create(format!("db/{TABLE_NAME}.redb")).unwrap();
-
-    {
-      let write_txn = db.begin_write().unwrap();
-      write_txn.open_table(SUBSCRIPTIONS_TABLE).unwrap(); // this basically just creates the table if doesn't exist
-      write_txn.commit().unwrap();
-    }
-
-    Self { db }
-  }
-
-  #[cfg(test)]
-  pub fn new(dir: &str, file: &str) -> Self {
-    fs::create_dir_all(format!("{dir}/")).unwrap();
-    let db = Database::create(format!("{dir}/{file}.redb")).unwrap();
 
     {
       let write_txn = db.begin_write().unwrap();
