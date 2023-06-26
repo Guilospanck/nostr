@@ -551,4 +551,73 @@ mod tests {
 
     remove_temp_db("subscribe_and_unsubcribe");
   }
+
+  #[tokio::test]
+  async fn follow_author() {
+    let client = Client::new(
+      Some("follow_author".to_string()),
+      Some("follow_author".to_string()),
+    );
+    let author = String::from("potato_author");
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 0);
+    assert_eq!(subscriptions_from_db.len(), 0);
+
+    client.follow_author(author.clone()).await;
+
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 1);
+    assert_eq!(subscriptions_from_db.len(), 1);
+    let subs_id = subscriptions.keys().last().unwrap();
+    let author_in_filter = subscriptions
+      .get(subs_id)
+      .unwrap()
+      .first()
+      .unwrap()
+      .authors
+      .clone()
+      .unwrap()
+      .first()
+      .unwrap()
+      .to_string();
+    assert_eq!(author_in_filter, author);
+
+    remove_temp_db("follow_author");
+  }
+
+  #[tokio::test]
+  async fn follow_myself() {
+    let client = Client::new(
+      Some("follow_myself".to_string()),
+      Some("follow_myself".to_string()),
+    );
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 0);
+    assert_eq!(subscriptions_from_db.len(), 0);
+
+    client.follow_myself().await;
+
+    let subscriptions = client.subscriptions().await;
+    let subscriptions_from_db = client.subscriptions_db.get_all_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 1);
+    assert_eq!(subscriptions_from_db.len(), 1);
+    let subs_id = subscriptions.keys().last().unwrap();
+    let author_in_filter = subscriptions
+      .get(subs_id)
+      .unwrap()
+      .first()
+      .unwrap()
+      .authors
+      .clone()
+      .unwrap()
+      .first()
+      .unwrap()
+      .to_string();
+    assert_eq!(author_in_filter, client.keys.public_key.to_hex());
+
+    remove_temp_db("follow_myself");
+  }
 }
