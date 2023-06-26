@@ -110,6 +110,8 @@ impl Client {
     self
   }
 
+  /// Adds relay to the pool
+  /// (and automatically connects to it and sends client metadata).
   pub async fn add_relay(&mut self, relay: String) {
     self
       .pool

@@ -23,6 +23,10 @@
 - [x] [RELAY] Fix JSON `as_json` and `from_json` of communications.
 - [x] [RELAY] Check filter function on `REQ` message. I suppose it is not working OR
 the database is not saving events properly. Example:
+- [x] [CLIENT] Bug connecting two times to relay: once when `add_relay()` and another when `connect()`.
+- [x] [CLIENT] When `remove_relay()` from pool should close its connection as well.
+- [ ] [ALL] Remove unnecessary dependencies.
+
 
 ```json
 ["EVENT",{"kind":1,"content":"Hello modafoca","tags":[],"created_at":1684144532,"pubkey":"5081ce98f7da142513444079a55e2d1676559a908d4f694d299057f8abddf835","id":"2c53b58e0882b75b6540659ec0f4217d41000a12497ecbcabe9574384839273c","sig":"054a5e289356e5b0cb3a5b5e71e07e91b178c67c236bc2c77f98faeef418439fb9a944f054f0f010d08dfbc8fb68e36afaf485be24f1526f38134df61a58c311"}]

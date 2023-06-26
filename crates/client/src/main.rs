@@ -1,3 +1,5 @@
+use std::{vec, env};
+
 use env_logger::Env;
 use futures_util::join;
 
@@ -10,9 +12,18 @@ async fn main() {
     .try_init()
     .unwrap();
 
+  // get addresses from env variables
+  let addresses = env::var("RELAY_LIST").map_or_else(|_| vec!["ws://127.0.0.1:8080/".to_string()], |data| {
+    data.split(',').map(|v| v.to_string()).collect()
+  });
+
   let mut client = client::Client::new();
 
-  client.connect().await;
+  for address in addresses.iter() {
+    client.add_relay(address.to_string()).await;
+  } 
+
+  // client.connect().await;
   client.get_notifications().await;
   client
     .follow_author(String::from(
@@ -32,6 +43,9 @@ async fn main() {
     .send_updated_metadata()
     .await;
   // client.add_relay(String::from("wss://relay.damus.io")).await;
+  // client.connect().await;
+  // client.remove_relay(String::from("wss://relay.damus.io")).await;
+  // client.connect().await;
   // client.add_relay(String::from("wss://nostr.wine")).await;
   // client
   //   .add_relay(String::from("wss://pow.nostrati.com"))

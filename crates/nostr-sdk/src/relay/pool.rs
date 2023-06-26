@@ -36,12 +36,15 @@ pub struct RelayData {
   relay_rx: Arc<Mutex<UnboundedReceiver<Message>>>,
   /// Flag to signal if the connection must be closed
   close_communication: Arc<AtomicBool>,
+  /// Flag to signal if the relay is already connected
+  is_connected: Arc<AtomicBool>,
 }
 
 impl RelayData {
   fn new(url: String, pool_task_sender: PoolTaskSender) -> Self {
     let (relay_tx, relay_rx) = unbounded_channel();
     let close_communication = Arc::new(AtomicBool::new(false));
+    let is_connected = Arc::new(AtomicBool::new(false));
 
     Self {
       url,
@@ -49,6 +52,7 @@ impl RelayData {
       relay_tx,
       relay_rx: Arc::new(Mutex::new(relay_rx)),
       close_communication,
+      is_connected
     }
   }
 
@@ -61,6 +65,7 @@ impl RelayData {
     match connection {
       Ok((ws_stream, _)) => {
         info!("❯ Connected to {}", self.url.clone());
+        self.is_connected.store(true, Ordering::Relaxed);
         let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
         // Send metadata on connection
@@ -110,9 +115,10 @@ impl RelayData {
     };
   }
 
-  async fn disconnect(&self) {
+  fn disconnect(&self) {
     debug!("❯ Disconnecting from {}", self.url);
     self.close_communication.store(true, Ordering::Relaxed);
+    self.is_connected.store(false, Ordering::Relaxed);
   }
 
   fn send_message(&self, message: Message) {
@@ -169,6 +175,7 @@ impl RelayPool {
     self.relays.lock().await
   }
 
+  /// Add relay to the pool hashmap and tries to connect to it.
   pub async fn add_relay(&self, url: String, metadata: Message) {
     let mut relays = self.relays_mut().await;
 
@@ -179,24 +186,30 @@ impl RelayPool {
     }
   }
 
+  /// Removes from the pool and disconnects from the relay.
   pub async fn remove_relay(&self, url: String) {
     let mut relays = self.relays_mut().await;
-    relays.remove(&url);
-  }
-
-  pub async fn connect(&self, metadata: Message) {
-    let relays = self.relays().await;
-
-    for relay in relays.values() {
-      relay.connect(metadata.clone()).await;
+    if relays.contains_key(&url) {
+      relays[&url].disconnect();
+      relays.remove(&url);
     }
   }
 
+  /// Connects to all relays in the pool that are not yet connected.
+  pub async fn connect(&self, metadata: Message) {
+    let relays = self.relays().await;
+    for relay in relays.values() {
+      if !relay.is_connected.load(Ordering::Relaxed) {
+        relay.connect(metadata.clone()).await;
+      }
+    }
+  }
+
+  /// Disconnects from a relay (does not remove it from the pool).
   pub async fn disconnect_relay(&self, relay_url: String) {
     let relays = self.relays().await;
     if let Some(relay) = relays.get(&relay_url) {
-      relay.disconnect().await;
-      self.remove_relay(relay_url).await;
+      relay.disconnect();
     };
   }
 
