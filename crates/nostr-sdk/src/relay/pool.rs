@@ -52,7 +52,7 @@ impl RelayData {
       relay_tx,
       relay_rx: Arc::new(Mutex::new(relay_rx)),
       close_communication,
-      is_connected
+      is_connected,
     }
   }
 
@@ -175,7 +175,9 @@ impl RelayPool {
     self.relays.lock().await
   }
 
-  /// Add relay to the pool hashmap and tries to connect to it.
+  /// Add relay to the pool hashmap and tries to connect to it
+  /// if it does not already exist.
+  ///
   pub async fn add_relay(&self, url: String, metadata: Message) {
     let mut relays = self.relays_mut().await;
 
@@ -187,6 +189,7 @@ impl RelayPool {
   }
 
   /// Removes from the pool and disconnects from the relay.
+  ///
   pub async fn remove_relay(&self, url: String) {
     let mut relays = self.relays_mut().await;
     if relays.contains_key(&url) {
@@ -196,6 +199,7 @@ impl RelayPool {
   }
 
   /// Connects to all relays in the pool that are not yet connected.
+  ///
   pub async fn connect(&self, metadata: Message) {
     let relays = self.relays().await;
     for relay in relays.values() {
@@ -206,6 +210,7 @@ impl RelayPool {
   }
 
   /// Disconnects from a relay (does not remove it from the pool).
+  ///
   pub async fn disconnect_relay(&self, relay_url: String) {
     let relays = self.relays().await;
     if let Some(relay) = relays.get(&relay_url) {
@@ -307,5 +312,166 @@ impl RelayPoolTask {
       }
     }
     debug!("RelayPool Thread Ended");
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::event::Event;
+
+  use super::*;
+
+  #[cfg(test)]
+  use pretty_assertions::assert_eq;
+  use serde_json::json;
+
+  fn make_relaydata_sut() -> RelayData {
+    let (pool_task_sender, _pool_task_receiver) = tokio::sync::mpsc::unbounded_channel();
+    RelayData::new(String::from("potato_url"), pool_task_sender)
+  }
+
+  fn make_relaypooltask_sut() -> RelayPoolTask {
+    let (_pool_task_sender, pool_task_receiver) = tokio::sync::mpsc::unbounded_channel();
+    RelayPoolTask::new(pool_task_receiver)
+  }
+
+  #[test]
+  fn relaydata_disconnect() {
+    let relay_data = make_relaydata_sut();
+
+    assert_eq!(relay_data.is_connected.load(Ordering::Relaxed), false);
+    assert_eq!(
+      relay_data.close_communication.load(Ordering::Relaxed),
+      false
+    );
+
+    relay_data.disconnect();
+
+    assert_eq!(relay_data.is_connected.load(Ordering::Relaxed), false);
+    assert!(relay_data.close_communication.load(Ordering::Relaxed));
+  }
+
+  #[tokio::test]
+  async fn relaypool_remove_relay() {
+    let relay_pool = RelayPool::new();
+    let url = String::from("key_potato");
+    let relay_data = make_relaydata_sut();
+
+    assert_eq!(relay_pool.relays().await.len(), 0);
+
+    let mut relays = relay_pool.relays_mut().await;
+    relays.insert(url.clone(), relay_data);
+    drop(relays);
+
+    assert_eq!(relay_pool.relays().await.len(), 1);
+    // if the key does not exist, should not do anything
+    relay_pool
+      .remove_relay(String::from("non-existent url"))
+      .await;
+    assert_eq!(relay_pool.relays().await.len(), 1);
+
+    // act
+    relay_pool.remove_relay(url.clone()).await;
+    assert_eq!(relay_pool.relays().await.len(), 0);
+  }
+
+  #[tokio::test]
+  async fn relaypool_disconnect_relay() {
+    let relay_pool = RelayPool::new();
+    let url = String::from("key_potato");
+    let relay_data = make_relaydata_sut();
+
+    assert_eq!(relay_pool.relays().await.len(), 0);
+
+    let mut relays = relay_pool.relays_mut().await;
+    relays.insert(url.clone(), relay_data);
+    drop(relays);
+    assert_eq!(relay_pool.relays().await.len(), 1);
+
+    let relays = relay_pool.relays().await;
+
+    // if the key does not exist, should not do anything
+    relay_pool
+      .disconnect_relay(String::from("non-existent url"))
+      .await;
+    assert_eq!(relay_pool.relays().await.len(), 1);
+    assert_eq!(relays[&url].is_connected.load(Ordering::Relaxed), false);
+    assert_eq!(
+      relays[&url].close_communication.load(Ordering::Relaxed),
+      false
+    );
+
+    // act
+    relay_pool.disconnect_relay(url.clone()).await;
+    assert_eq!(relay_pool.relays().await.len(), 1);
+
+    assert_eq!(relays[&url].is_connected.load(Ordering::Relaxed), false);
+    assert!(relays[&url].close_communication.load(Ordering::Relaxed));
+  }
+
+  #[test]
+  fn parse_eose_message() {
+    let relay_pool_task = make_relaypooltask_sut();
+    let eose = RelayToClientCommEose::default();
+    let eose_json = eose.as_json();
+
+    let result =
+      relay_pool_task.parse_message_received_from_relay(&eose_json, String::from("potato_url"));
+
+    assert_eq!(result.data.eose, eose);
+    assert!(result.is_eose);
+    assert_eq!(result.is_event, false);
+    assert_eq!(result.is_notice, false);
+    assert_eq!(result.no_op, false);
+  }
+
+  #[test]
+  fn parse_notice_message() {
+    let relay_pool_task = make_relaypooltask_sut();
+    let notice = RelayToClientCommNotice::default();
+    let notice_json = notice.as_json();
+
+    let result =
+      relay_pool_task.parse_message_received_from_relay(&notice_json, String::from("potato_url"));
+
+    assert_eq!(result.data.notice, notice);
+    assert!(result.is_notice);
+    assert_eq!(result.is_event, false);
+    assert_eq!(result.is_eose, false);
+    assert_eq!(result.no_op, false);
+  }
+
+  #[test]
+  fn parse_event_message() {
+    let relay_pool_task = make_relaypooltask_sut();
+    let event_with_correct_signature = Event::from_value(
+      json!({"content":"potato","created_at":1684589418,"id":"00960bd35499f8c63a4f65e79d6b1a2b7f1b8c97e76652325567b78c496350ae","kind":1,"pubkey":"614a695bab54e8dc98946abdb8ec019599ece6dada0c23890977d0fa128081d6","sig":"bf073c935f71de50ec72bdb79f75b0bf32f9049305c3b22f97c06422c6f2edc86e0d7e07d7d7222678b238b1daee071be5f6fa653c611971395ec0d1c6407caf","tags":[]}),
+    ).unwrap();
+    let event =
+      RelayToClientCommEvent::new_event(String::from("potato_subs"), event_with_correct_signature);
+    let event_json = event.as_json();
+
+    let result =
+      relay_pool_task.parse_message_received_from_relay(&event_json, String::from("potato_url"));
+
+    assert_eq!(result.data.event, event);
+    assert!(result.is_event);
+    assert_eq!(result.is_notice, false);
+    assert_eq!(result.is_eose, false);
+    assert_eq!(result.no_op, false);
+  }
+
+  #[test]
+  fn parse_noop_message() {
+    let relay_pool_task = make_relaypooltask_sut();
+    let no_op = r#"{}"#;
+
+    let result =
+      relay_pool_task.parse_message_received_from_relay(no_op, String::from("potato_url"));
+
+    assert!(result.no_op);
+    assert_eq!(result.is_notice, false);
+    assert_eq!(result.is_eose, false);
+    assert_eq!(result.is_event, false);
   }
 }
