@@ -32,7 +32,11 @@ nostr-sdk-run-tests:
 	$(MAKE) -C crates/nostr-sdk/ run-all-tests
 
 ##! All
-run-all-clippy: relay-run-clippy client-run-clippy nostr-sdk-run-clippy
+run-all-clippy:
+	cargo clippy --all-targets -- -D warnings
+
+run-all-check:
+	cargo check --all-targets -- -D warnings
 
 ##! If you wanna run them in a serial way, pass SERIAL=true to the command. Ex.: make run-all-tests SERIAL=true
 run-all-tests: relay-run-tests client-run-tests nostr-sdk-run-tests

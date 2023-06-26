@@ -14,10 +14,6 @@ jobs:
       matrix:
         rust:
           - stable
-        directories:
-          - ./relay
-          - ./client
-          - ./nostr-sdk
     steps:
     # Checkout repository
     - name: Checkout repository
@@ -32,8 +28,7 @@ jobs:
 
     # Cargo check
     - name: Run cargo check
-      working-directory: ${{ matrix.directories }}
-      run: cargo check
+      run: cargo check --all-targets
 
   clippy:
     name: Clippy
@@ -42,10 +37,6 @@ jobs:
       matrix:
         rust:
           - stable
-        directories:
-          - ./relay
-          - ./client
-          - ./nostr-sdk
 
     steps:
     - uses: actions/checkout@v2
@@ -54,6 +45,4 @@ jobs:
         toolchain: ${{ matrix.rust }}
         override: true
     - run: rustup component add clippy
-    - working-directory: ${{ matrix.directories }}
-      name: clippy ${{ matrix.directories }}
-      run: cargo clippy --all-targets -- -D warnings
+    - run: cargo clippy --all-targets -- -D warnings
