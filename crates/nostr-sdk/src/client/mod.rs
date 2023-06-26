@@ -212,10 +212,7 @@ impl Client {
     debug!("SUBSCRIBING to {:?}", filter_subscription);
 
     // Broadcast REQ subscription to all relays in the pool
-    self
-      .pool
-      .broadcast_messages(Message::from(filter_subscription.as_json()))
-      .await;
+    self.broadcast_messages(filter_subscription.as_json()).await;
 
     // save to db
     let filters_string = serde_json::to_string(&filters).unwrap();
@@ -238,10 +235,7 @@ impl Client {
     .as_json();
 
     // Broadcast CLOSE subscription to all relays in the pool
-    self
-      .pool
-      .broadcast_messages(Message::from(close_subscription))
-      .await;
+    self.broadcast_messages(close_subscription).await;
 
     // remove from db
     self.subscriptions_db.remove_subscription(subscription_id);
@@ -262,10 +256,7 @@ impl Client {
       .as_json();
 
       // Broadcast subscription to all relays in the pool
-      self
-        .pool
-        .broadcast_messages(Message::from(filter_subscription))
-        .await;
+      self.broadcast_messages(filter_subscription).await;
     }
   }
 
@@ -298,13 +289,10 @@ impl Client {
   }
 
   pub async fn send_updated_metadata(&self) {
-    self
-      .pool
-      .broadcast_messages(Message::from(self.get_event_metadata().as_json()))
-      .await;
+    self.broadcast_messages(self.get_event_metadata().as_json()).await
   }
 
-  pub async fn publish(&self, to_publish: String) {
+  pub async fn broadcast_messages(&self, to_publish: String) {
     self
       .pool
       .broadcast_messages(Message::from(to_publish))
