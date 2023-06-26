@@ -48,3 +48,7 @@ tag-and-push:
 ##! Generate new test coverage
 coverage:
 	./generate_coverage.sh
+
+##! Generate docs for nostr-sdk
+generate_docs:
+	cargo doc --open --no-deps --package nostr-sdk

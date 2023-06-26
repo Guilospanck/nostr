@@ -3,7 +3,7 @@ pub mod eose;
 pub mod event;
 pub mod notice;
 
-/// [`RelayToClientCommunication`] error
+/// [`CommunicationWithClient`] error
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
   /// Error serializing or deserializing JSON data

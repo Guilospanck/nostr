@@ -22,7 +22,7 @@ pub mod close;
 pub mod event;
 pub mod request;
 
-/// [`ClientToRelayCommunication`] error
+/// [`CommunicationWithRelay`] error
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
   /// Error serializing or deserializing JSON data

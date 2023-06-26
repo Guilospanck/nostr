@@ -122,6 +122,7 @@ impl Client {
       .await;
   }
 
+  /// This function has the same semantics as `crate::relay::pool::RelayPool.remove_relay()`.
   pub async fn remove_relay(&mut self, relay: String) {
     self.pool.remove_relay(relay).await;
   }
