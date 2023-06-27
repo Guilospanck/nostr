@@ -36,7 +36,7 @@ run-all-clippy:
 	cargo clippy --all-targets -- -D warnings
 
 run-all-check:
-	cargo check --all-targets -- -D warnings
+	cargo check --all-targets
 
 ##! If you wanna run them in a serial way, pass SERIAL=true to the command. Ex.: make run-all-tests SERIAL=true
 run-all-tests: relay-run-tests client-run-tests nostr-sdk-run-tests
@@ -53,6 +53,9 @@ tag-and-push:
 coverage:
 	./generate_coverage.sh
 
+coverage-and-open: coverage
+	open -a Google\ Chrome.app target/debug/coverage/index.html
+
 ##! Generate docs for nostr-sdk
-generate_docs:
+generate-docs:
 	cargo doc --open --no-deps --package nostr-sdk
