@@ -104,7 +104,7 @@ mod tests {
       let mock_event = Self::mock_event(mock_filter_id);
 
       let mock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-      let (mock_tx, _rx) = futures_channel::mpsc::unbounded::<Message>();
+      let (mock_tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
 
       Self {
         mock_addr,

@@ -11,8 +11,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use futures_channel::mpsc::UnboundedSender;
-use futures_util::{future, pin_mut, stream::TryStreamExt, FutureExt, StreamExt};
+use futures_util::{future, pin_mut, stream::TryStreamExt, FutureExt, SinkExt, StreamExt};
 
 use log::{debug, error, info};
 use tokio::net::{TcpListener, TcpStream};
@@ -38,7 +37,7 @@ use crate::relay::{
   send_to_client::{broadcast_message_to_clients, send_message_to_client},
 };
 
-pub type Tx = UnboundedSender<Message>;
+pub type Tx = tokio::sync::mpsc::UnboundedSender<Message>;
 
 /// Holds information about the requests made by a client.
 ///
@@ -135,9 +134,9 @@ async fn handle_connection(
   let ping_interval = Duration::from_secs(20);
   let mut interval = time::interval(ping_interval);
 
-  let (tx, rx) = futures_channel::mpsc::unbounded();
+  let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
-  let (outgoing, incoming) = ws_stream.split();
+  let (mut outgoing, incoming) = ws_stream.split();
 
   // Spawn the handler to run async
   let tx_clone = tx.clone();
@@ -147,7 +146,7 @@ async fn handle_connection(
 
       // Send a ping message
       let ping_message = Message::Ping(vec![]);
-      if let Err(err) = tx_clone.unbounded_send(ping_message) {
+      if let Err(err) = tx_clone.send(ping_message) {
         error!("Error sending ping message: {err}");
         break Err(err).map_err(|_err| {
           tokio_tungstenite::tungstenite::Error::Protocol(
@@ -242,21 +241,36 @@ async fn handle_connection(
     future::ok(())
   });
 
-  let receive_from_others = rx.map(Ok).forward(outgoing);
+  let rx_to_client = async {
+    let mut result: Result<(), tokio_tungstenite::tungstenite::Error> = Ok(());
+
+    while let Some(msg) = rx.recv().await {
+      if let Err(err) = outgoing.send(msg.clone()).await {
+        error!("Error sending {}: {err}", msg.to_string());
+        result = Err(err).map_err(|_err| {
+          tokio_tungstenite::tungstenite::Error::Protocol(
+            tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing,
+          )
+        });
+        break;
+      }
+    }
+
+    result
+  };
 
   // This has to be done in order to:
   // - pin the future in the heap (Box::pin)
   // - be able to compose the vec in `select_all` (all will have the same "Box" type)
   let boxed_broadcast_incoming = broadcast_incoming.boxed();
-  let receive_from_others = receive_from_others.boxed();
   let ping = ping.boxed();
+  let rx_to_client = rx_to_client.boxed();
 
-  let (_, _, _) =
-    future::select_all(vec![boxed_broadcast_incoming, receive_from_others, ping]).await;
+  let (_, _, _) = future::select_all(vec![boxed_broadcast_incoming, ping, rx_to_client]).await;
 
   // If the code reaches this part it is because some of the futures above
-  // (namely `broadcast_incoming` or `receive_from_others`) is done (connection is closed for some reason)
-  // Therefore we need to do this cleanup
+  // (namely `broadcast_incoming` or `ping` or `rx_to_client`) is done (connection is closed for some reason).
+  // Therefore we need to do this cleanup.
   connection_cleanup(client_connection_info, addr);
 }
 
@@ -297,7 +311,7 @@ pub async fn initiate_relay() -> Result<(), MainError> {
         }
         .as_json();
         send_message_to_client(client.tx.clone(), notice_event);
-        client.tx.unbounded_send(Message::Close(None)).unwrap();
+        client.tx.send(Message::Close(None)).unwrap();
       }
     }
     .await;
