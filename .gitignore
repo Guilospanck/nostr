@@ -21,3 +21,6 @@ Cargo.lock
 
 # backup files
 *.bkp
+
+# others
+.DS_Store

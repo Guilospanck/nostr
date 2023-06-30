@@ -123,7 +123,7 @@ async fn handle_connection(
   addr: SocketAddr,
   client_connection_info: Arc<Mutex<Vec<ClientConnectionInfo>>>,
   events: Arc<Mutex<Vec<Event>>>,
-  events_db: Arc<Mutex<EventsDB<'_>>>,
+  events_db: Arc<Mutex<EventsDB>>,
 ) {
   let ws_stream = tokio_tungstenite::accept_async(raw_stream)
     .await
@@ -285,7 +285,7 @@ pub async fn initiate_relay() -> Result<(), MainError> {
   let addr = env::var("RELAY_HOST").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
   // Read events from DB
-  let events_db = EventsDB::new().unwrap();
+  let events_db = EventsDB::new(None).unwrap();
   let events = events_db.get_all_items().unwrap();
 
   // thread-safe and lockable

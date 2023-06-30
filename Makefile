@@ -53,8 +53,10 @@ tag-and-push:
 coverage:
 	./generate_coverage.sh
 
-coverage-and-open: coverage
+open-coverage:
 	open -a Google\ Chrome.app target/debug/coverage/index.html
+
+coverage-and-open: coverage open-coverage
 
 ##! Generate docs for nostr-sdk
 generate-docs:
