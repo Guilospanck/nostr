@@ -41,7 +41,7 @@ pub type Tx = tokio::sync::mpsc::UnboundedSender<Message>;
 
 /// Holds information about the requests made by a client.
 ///
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientRequests {
   pub subscription_id: String,
   pub filters: Vec<Filter>,
@@ -50,7 +50,7 @@ pub struct ClientRequests {
 /// Holds information about the clients connection.
 /// A client cannot have more than one connection with the same relay.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClientConnectionInfo {
   pub tx: Tx,
   pub socket_addr: SocketAddr,
@@ -344,4 +344,106 @@ pub async fn initiate_relay() -> Result<(), MainError> {
   future::select(server, ctrl_c_listener).await;
 
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use std::net::{IpAddr, Ipv4Addr};
+
+  use super::*;
+
+  #[cfg(test)]
+  use pretty_assertions::assert_eq;
+  use serde_json::json;
+
+  fn make_clientconnectioninfo_sut(socket_addr: SocketAddr) -> ClientConnectionInfo {
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+    ClientConnectionInfo {
+      tx,
+      socket_addr,
+      requests: vec![],
+    }
+  }
+
+  #[test]
+  fn parse_close_message() {
+    let close = ClientToRelayCommClose::default();
+    let close_json = close.as_json();
+
+    let result = parse_message_received_from_client(&close_json);
+
+    assert_eq!(result.data.close, close);
+    assert!(result.is_close);
+    assert_eq!(result.is_event, false);
+    assert_eq!(result.is_request, false);
+    assert_eq!(result.no_op, false);
+  }
+
+  #[test]
+  fn parse_request_message() {
+    let request = ClientToRelayCommRequest::default();
+    let request_json = request.as_json();
+
+    let result = parse_message_received_from_client(&request_json);
+
+    assert_eq!(result.data.request, request);
+    assert!(result.is_request);
+    assert_eq!(result.is_event, false);
+    assert_eq!(result.is_close, false);
+    assert_eq!(result.no_op, false);
+  }
+
+  #[test]
+  fn parse_event_message() {
+    let event_with_correct_signature = Event::from_value(
+      json!({"content":"potato","created_at":1684589418,"id":"00960bd35499f8c63a4f65e79d6b1a2b7f1b8c97e76652325567b78c496350ae","kind":1,"pubkey":"614a695bab54e8dc98946abdb8ec019599ece6dada0c23890977d0fa128081d6","sig":"bf073c935f71de50ec72bdb79f75b0bf32f9049305c3b22f97c06422c6f2edc86e0d7e07d7d7222678b238b1daee071be5f6fa653c611971395ec0d1c6407caf","tags":[]}),
+    ).unwrap();
+    let event = ClientToRelayCommEvent::new_event(event_with_correct_signature);
+    let event_json = event.as_json();
+
+    let result = parse_message_received_from_client(&event_json);
+
+    assert_eq!(result.data.event, event);
+    assert!(result.is_event);
+    assert_eq!(result.is_request, false);
+    assert_eq!(result.is_close, false);
+    assert_eq!(result.no_op, false);
+  }
+
+  #[test]
+  fn parse_noop_message() {
+    let no_op = r#"{}"#;
+
+    let result = parse_message_received_from_client(no_op);
+
+    assert!(result.no_op);
+    assert_eq!(result.is_request, false);
+    assert_eq!(result.is_close, false);
+    assert_eq!(result.is_event, false);
+  }
+
+  #[test]
+  fn test_connection_cleanup() {
+    let client_connection_info = Arc::new(Mutex::new(Vec::<ClientConnectionInfo>::new()));
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+    let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+
+    let client1 = make_clientconnectioninfo_sut(addr);
+    let client2 = make_clientconnectioninfo_sut(addr2);
+
+    // add some clients prior to cleanup
+    let mut clients = client_connection_info.lock().unwrap();
+    clients.push(client1);
+    clients.push(client2.clone());
+    assert_eq!(clients.len(), 2);
+    drop(clients);
+
+    connection_cleanup(client_connection_info.clone(), addr);
+
+    let clients = client_connection_info.lock().unwrap();
+    assert_eq!(clients.len(), 1);
+    assert_eq!(clients.first().unwrap().requests, client2.requests);
+    assert_eq!(clients.first().unwrap().socket_addr, client2.socket_addr);
+  }
 }
