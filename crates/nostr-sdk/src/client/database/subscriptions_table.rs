@@ -49,7 +49,7 @@ impl SubscriptionsTable {
     fs::create_dir_all("db/").unwrap();
     let table_name = match subscriptions_table_name {
       Some(name) => name,
-      None => TABLE_NAME.to_string()
+      None => TABLE_NAME.to_string(),
     };
     let db = Database::create(format!("db/{table_name}.redb")).unwrap();
 
@@ -85,5 +85,88 @@ impl SubscriptionsTable {
 
   pub fn remove_subscription(&self, k: &str) {
     self.remove_from_db(k).unwrap();
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::vec;
+
+  use super::*;
+
+  #[cfg(test)]
+  use pretty_assertions::assert_eq;
+
+  struct Sut {
+    subscription_id: String,
+    filter_json: String,
+    filters: Vec<Filter>,
+    subscriptions_table: SubscriptionsTable,
+    table_name: String,
+  }
+
+  impl Drop for Sut {
+    fn drop(&mut self) {
+      self.remove_temp_db();
+    }
+  }
+
+  impl Sut {
+    fn new(table_name: &str) -> Sut {
+      let subscription_id = String::from("random-subs-id");
+      let filter = Filter::new();
+      let filters = vec![filter];
+      let filters_json = serde_json::to_string(&filters).unwrap();
+
+      let subscriptions_table = SubscriptionsTable::new(Some(table_name.to_string()));
+
+      Sut {
+        subscription_id,
+        filter_json: filters_json,
+        filters,
+        subscriptions_table,
+        table_name: table_name.to_string(),
+      }
+    }
+
+    fn remove_temp_db(&self) {
+      fs::remove_file(format!("db/{}.redb", self.table_name)).unwrap();
+    }
+  }
+
+  #[test]
+  fn write_to_db() {
+    let sut = Sut::new("write_to_db_subscription_table");
+
+    let result = sut
+      .subscriptions_table
+      .write_to_db(&sut.subscription_id, &sut.filter_json);
+    assert!(result.is_ok());
+
+    let all_subscriptions = sut.subscriptions_table.get_all_subscriptions();
+    assert!(all_subscriptions.is_ok());
+
+    assert_eq!(
+      all_subscriptions.unwrap().get(&sut.subscription_id),
+      Some(&sut.filters)
+    );
+  }
+
+  #[test]
+  fn remove_from_db() {
+    let sut = Sut::new("remove_from_db_subscription_table");
+
+    // add some data
+    let result = sut
+      .subscriptions_table
+      .write_to_db(&sut.subscription_id, &sut.filter_json);
+    assert!(result.is_ok());
+
+    let result = sut.subscriptions_table.remove_from_db(&sut.subscription_id);
+    assert!(result.is_ok());
+    
+    let all_subscriptions = sut.subscriptions_table.get_all_subscriptions();
+    assert!(all_subscriptions.is_ok());
+    assert!(all_subscriptions.unwrap().is_empty());
   }
 }

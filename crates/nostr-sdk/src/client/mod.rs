@@ -80,7 +80,7 @@ impl Default for Client {
 
 impl Client {
   pub fn new(keys_table_name: Option<String>, subscriptions_table_name: Option<String>) -> Self {
-    let keys = KeysTable::new(keys_table_name).get_client_keys().unwrap();
+    let keys = KeysTable::new(keys_table_name).get_or_create_client_keys().unwrap();
     let subscriptions_db = SubscriptionsTable::new(subscriptions_table_name);
     let subscriptions = subscriptions_db.get_all_subscriptions().unwrap();
 
