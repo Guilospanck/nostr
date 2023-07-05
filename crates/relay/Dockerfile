@@ -5,10 +5,10 @@ FROM lukemathwalker/cargo-chef:latest-rust-1.69.0@sha256:eb4708b22ba93755b7f54be
 WORKDIR /app
 
 FROM chef AS planner
-# Copy necessary data
-COPY ./nostr-sdk .
-COPY ./relay .
 WORKDIR /app/relay
+# Copy necessary data
+COPY ./crates/nostr-sdk .
+COPY ./crates/relay .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder 
