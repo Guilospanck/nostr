@@ -125,10 +125,12 @@ async fn handle_connection(
   events: Arc<Mutex<Vec<Event>>>,
   events_db: Arc<Mutex<EventsDB>>,
 ) {
-  // TODO: Fix this expect. It is breaking the application once we have a Protocol(MissingSecWebSocketKey) error.
-  let ws_stream = tokio_tungstenite::accept_async(raw_stream)
-    .await
-    .expect("Error during the websocket handshake occurred");
+  let ws_stream = tokio_tungstenite::accept_async(raw_stream).await;
+  if ws_stream.is_err() {
+    error!("{:?}", ws_stream.err().unwrap());
+    return;
+  }
+  let ws_stream = ws_stream.ok().unwrap();
   info!("WebSocket connection established: {addr}");
 
   // Start a periodic timer to send ping messages
