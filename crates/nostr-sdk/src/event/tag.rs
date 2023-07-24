@@ -143,8 +143,8 @@ impl Tag {
 /// ### Example
 ///
 /// ```rust
-///   use nostr_sdk::event::tag::{Tag, UncheckedRecommendRelayURL};
-///   use nostr_sdk::event;
+///   use guilospanck_nostr_sdk::event::tag::{Tag, UncheckedRecommendRelayURL};
+///   use guilospanck_nostr_sdk::event;
 ///
 ///   let p_tag_vector: Vec<String> = vec!["p".to_string(), "0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string(), "ws://relay.com".to_string()];
 ///   let second_p_tag_vector: Vec<String> = vec!["p".to_string(), "0854578asdef1238789".to_string(), "1854578asdef1238789".to_string(), "2854578asdef1238789".to_string(), "".to_string()];

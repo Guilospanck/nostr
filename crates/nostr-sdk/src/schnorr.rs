@@ -52,7 +52,7 @@ pub enum SchnorrError {
 /// ## Examples
 ///
 /// ```
-///     use nostr_sdk::schnorr::*;
+///     use guilospanck_nostr_sdk::schnorr::*;
 ///     use secp256k1::Secp256k1;
 ///     use bitcoin_hashes::{sha256, hex::ToHex, Hash};
 ///
@@ -97,7 +97,7 @@ pub fn sign_ecdsa<C: Signing>(
 /// ## Examples
 ///
 /// ```
-///     use nostr_sdk::schnorr::*;
+///     use guilospanck_nostr_sdk::schnorr::*;
 ///     use std::str::FromStr;
 ///     use secp256k1::{Secp256k1, ecdsa};
 ///
@@ -150,7 +150,7 @@ pub fn verify_ecdsa<C: Verification>(
 /// ## Examples
 ///
 /// ```
-///     use nostr_sdk::schnorr::*;
+///     use guilospanck_nostr_sdk::schnorr::*;
 ///     use secp256k1::Secp256k1;
 ///     use bitcoin_hashes::{hex::ToHex, sha256, Hash};
 ///
@@ -198,7 +198,7 @@ pub fn sign_schnorr<C: Signing>(
 /// ## Examples
 ///
 /// ```
-///     use nostr_sdk::schnorr::*;
+///     use guilospanck_nostr_sdk::schnorr::*;
 ///     use std::str::FromStr;
 ///     use secp256k1::{Secp256k1, schnorr};
 ///

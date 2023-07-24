@@ -1,5 +1,5 @@
 use env_logger::Env;
-use nostr_sdk::relay;
+use guilospanck_nostr_sdk::relay;
 
 fn main() {
   dotenv::dotenv().ok();

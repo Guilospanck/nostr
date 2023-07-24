@@ -3,7 +3,7 @@ use std::{vec, env};
 use env_logger::Env;
 use futures_util::join;
 
-use nostr_sdk::client;
+use guilospanck_nostr_sdk::client;
 
 #[tokio::main]
 async fn main() {
